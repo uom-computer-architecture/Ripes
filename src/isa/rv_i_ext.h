@@ -1035,8 +1035,16 @@ struct Li : public PseudoInstruction<Li<isRV64>> {
                                   ">32-bit imm for non-RV64 target")
                               .arg(line.tokens.at(2)))};
         } else {
-          return Result<std::vector<LineTokens>>{Error(
-              line, QString("Invalid immediate '%1'").arg(line.tokens.at(2)))};
+          // Not a number, nor a constant known at this point: most often a
+          // register or a data label, which 'li' cannot take.
+          bool isReg = false;
+          RV_GPRInfo().regNumber(line.tokens.at(2), isReg);
+          const QString hint =
+              isReg ? "; it is a register. To copy a register, use 'mv'"
+                    : ". To load the address of a label, use 'la'";
+          return Result<std::vector<LineTokens>>{
+              Error(line, QString("'li' needs a number, but '%1' is not one%2")
+                              .arg(line.tokens.at(2), hint))};
         }
       }
     }

@@ -334,6 +334,11 @@ protected:
           }
           expandedLines.push_back(tsl);
         }
+      } else if (isPseudoOnly(tokenizedLine.value())) {
+        // A pseudo-instruction that no real instruction shares a name with
+        // could not be expanded: its operands are wrong. Report that, rather
+        // than letting pass 2 call a valid mnemonic an unknown opcode.
+        errors.push_back(expandedOps.error());
       } else {
         // This was not a pseudoinstruction; just add line to the set of
         // expanded lines
@@ -454,6 +459,11 @@ protected:
   pass3(Program &program, const LinkRequests &needsLinkage) const {
     Errors errors;
     for (const LinkRequest &linkRequest : needsLinkage) {
+      // A pseudo-instruction expands into consecutive instructions that each
+      // link the same symbol; one mistake on a line is reported once.
+      if (!errors.empty() &&
+          errors.back().sourceLine() == linkRequest.sourceLine())
+        continue;
       const auto &symbol = linkRequest.fieldRequest.symbol;
       Reg_T symbolValue;
 
@@ -466,7 +476,15 @@ protected:
       // Expression evaluation also performs symbol evaluation
       auto exprRes = evalExpr(linkRequest, symbol);
       if (auto *err = std::get_if<Error>(&exprRes)) {
-        errors.push_back(*err);
+        // A register where a number or label belongs ("lw t2, a0(t1)")
+        // reaches here as an unknown symbol; name what it actually is.
+        if (isRegisterName(symbol))
+          errors.push_back(Error(linkRequest,
+                                 "'" + symbol +
+                                     "' is a register, but this operand must "
+                                     "be a number or a label"));
+        else
+          errors.push_back(*err);
         continue;
       } else {
         symbolValue = std::get<ExprEvalVT>(exprRes);
@@ -499,7 +517,23 @@ protected:
       if (auto res = linkRequest.fieldRequest.resolveSymbol(
               linkRequest, symbolValue, instr, linkReqAddress(linkRequest));
           res.isError()) {
-        errors.push_back(res.error());
+        const auto labelIt = m_symbolMap.abs.find(Symbol(symbol));
+        if (linkRequest.fieldRequest.relocation.isEmpty() &&
+            !linkRequest.fieldRequest.pcRelative &&
+            labelIt != m_symbolMap.abs.end() &&
+            labelIt->first.is(Symbol::Type::Address)) {
+          // A label used as an immediate ("addi a0, zero, input_n") stands
+          // for its address, a number the student never wrote.
+          errors.push_back(Error(
+              linkRequest,
+              "'" + symbol + "' is a label, so here it means its address (0x" +
+                  QString::number(symbolValue, 16) +
+                  "), which is too large for this operand. To read the "
+                  "value stored at a label, load its address with 'la', "
+                  "then use 'lw'"));
+        } else {
+          errors.push_back(res.error());
+        }
         continue;
       }
 
@@ -511,6 +545,27 @@ protected:
     } else {
       return {NoPassResult()};
     }
+  }
+
+  /// True if @p token names a register of this ISA.
+  bool isRegisterName(const QString &token) const {
+    for (const auto &[_, regInfo] : m_isa->regInfoMap()) {
+      bool success = false;
+      regInfo->regNumber(token, success);
+      if (success)
+        return true;
+    }
+    return false;
+  }
+
+  /// True if the line's opcode names a pseudo-instruction and no real
+  /// instruction, so pass 2 has nothing to fall back to.
+  bool isPseudoOnly(const TokenizedSrcLine &line) const {
+    if (line.tokens.empty())
+      return false;
+    const auto &opcode = line.tokens.at(0);
+    return m_pseudoInstructionMap.count(opcode) != 0 &&
+           m_instructionMap.count(opcode) == 0;
   }
 
   virtual Result<std::vector<LineTokens>>
@@ -551,6 +606,12 @@ protected:
     const auto &opcode = line.tokens.at(0);
     auto instrIt = m_instructionMap.find(opcode);
     if (instrIt == m_instructionMap.end()) {
+      if (const auto ext = m_isa->disabledExtensionOf(opcode); !ext.isEmpty()) {
+        return {Error(line, "'" + opcode + "' is part of the " + ext +
+                                " extension (" +
+                                m_isa->extensionDescription(ext) +
+                                "), which is not enabled for this program")};
+      }
       return {Error(line, "Unknown opcode '" + opcode + "'")};
     }
     assembledWith = instrIt->second;
