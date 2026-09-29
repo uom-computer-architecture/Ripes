@@ -208,12 +208,18 @@ class ExitTelemetry : public Telemetry {
 public:
   QString key() const override { return "exit"; }
   QString description() const override {
-    return "exit reason (normal, max_cycles)";
+    return "exit reason (normal, max_cycles, unsupported_syscall, "
+           "input_requested)";
   }
   QVariant report(bool /*json*/) override {
     QVariantMap m;
-    m["reason"] =
-        ProcessorHandler::maxCyclesExceeded() ? "max_cycles" : "normal";
+    if (!ProcessorHandler::stopReason().isEmpty()) {
+      m["reason"] = ProcessorHandler::stopReason();
+      m["syscall"] = ProcessorHandler::stopSyscall();
+    } else {
+      m["reason"] =
+          ProcessorHandler::maxCyclesExceeded() ? "max_cycles" : "normal";
+    }
     m["cycles"] =
         QVariant::fromValue(ProcessorHandler::getProcessor()->getCycleCount());
     return m;
