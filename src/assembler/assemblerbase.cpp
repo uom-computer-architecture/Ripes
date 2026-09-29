@@ -31,7 +31,9 @@ void AssemblerBase::setSegmentBase(Section seg, AInt base) {
 
 AssembleResult AssemblerBase::assembleRaw(const QString &program,
                                           const SymbolMap *symbols) const {
-  const auto programLines = program.split(QRegularExpression("[\r\n]"));
+  // One entry per source line whatever the line ending. Splitting on each of
+  // '\r' and '\n' made every CRLF line two entries, doubling reported lines.
+  const auto programLines = program.split(QRegularExpression("\r\n|\r|\n"));
   return assemble(programLines, symbols,
                   Program::calculateHash(program.toUtf8()));
 }
@@ -135,8 +137,12 @@ AssemblerBase::splitSymbolsFromLine(const Location &location,
           return {Error(location, "Multiple definitions of symbol '" +
                                       cleanedSymbol.v + "'")};
         } else {
-          if (cleanedSymbol.v.isEmpty() ||
-              cleanedSymbol.v.contains(s_exprOperatorsRegex)) {
+          if (cleanedSymbol.v.isEmpty()) {
+            return {Error(location,
+                          "':' with no label name before it. A label is a "
+                          "name followed by ':', e.g. 'loop:'")};
+          }
+          if (cleanedSymbol.v.contains(s_exprOperatorsRegex)) {
             return {
                 Error(location, "Invalid symbol '" + cleanedSymbol.v + "'")};
           }
@@ -144,7 +150,10 @@ AssemblerBase::splitSymbolsFromLine(const Location &location,
           symbols.insert(cleanedSymbol);
         }
       } else {
-        return {Error(location, QStringLiteral("Stray ':' in line"))};
+        return {Error(location, "'" + token +
+                                    "' looks like a label, but labels must "
+                                    "come first on a line, e.g. 'loop: addi "
+                                    "t0, t0, 1'")};
       }
     } else {
       remainingTokens.push_back(token);
@@ -194,7 +203,15 @@ AssemblerBase::splitCommentFromLine(const QStringList &stringTokens) const {
   QStringList preCommentTokens;
   preCommentTokens.reserve(stringTokens.size());
   for (const auto &token : stringTokens) {
-    if (token.startsWith(commentDelimiter())) {
+    // A comment may follow an operand with no space before it ("t3# note"),
+    // as other RISC-V assemblers accept. Quoted strings and character
+    // literals are single tokens and may legitimately contain the delimiter.
+    const bool literal = token.startsWith('"') || token.startsWith('\'');
+    const auto commentAt = literal ? -1 : token.indexOf(commentDelimiter());
+    if (commentAt == 0) {
+      break;
+    } else if (commentAt > 0) {
+      preCommentTokens.push_back(token.left(commentAt));
       break;
     } else {
       preCommentTokens.push_back(token);
