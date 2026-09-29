@@ -10,6 +10,7 @@
 #include "io/iomanager.h"
 
 #include "syscall/riscv_syscall.h"
+#include "syscall/systemio.h"
 
 #include <QMessageBox>
 #include <QtConcurrent/QtConcurrent>
@@ -203,6 +204,9 @@ void ProcessorHandler::_clock() {
 void ProcessorHandler::_run() {
   ProcessorStatusManager::setStatusTimed("Running...");
   emit runStarted();
+  m_maxCyclesExceeded = false;
+  m_stopReason.clear();
+  m_stopSyscall = 0;
 
   // Start running through the VSRTL Widget interface
   m_runWatcher.setFuture(QtConcurrent::run([this] {
@@ -215,6 +219,11 @@ void ProcessorHandler::_run() {
 
     while (!(_checkBreakpoint() || m_currentProcessor->finished() ||
              m_stopRunningFlag)) {
+      if (m_maxCycles != 0 &&
+          m_currentProcessor->getCycleCount() >= m_maxCycles) {
+        m_maxCyclesExceeded = true;
+        break;
+      }
       m_currentProcessor->clock();
     }
 
@@ -405,10 +414,11 @@ QString ProcessorHandler::_disassembleInstr(const AInt addr) const {
 }
 
 void ProcessorHandler::syscallTrap() {
+  unsigned int function = 0;
   auto futureWatcher = QFutureWatcher<bool>();
-  futureWatcher.setFuture(QtConcurrent::run([this] {
+  futureWatcher.setFuture(QtConcurrent::run([this, &function] {
     if (auto reg = _currentISA()->syscallReg(); reg.has_value()) {
-      const unsigned int function =
+      function =
           m_currentProcessor->getRegister(reg->file->regFileName(), reg->index);
       return m_syscallManager->execute(function);
     } else {
@@ -419,6 +429,16 @@ void ProcessorHandler::syscallTrap() {
   futureWatcher.waitForFinished();
   if (!futureWatcher.result()) {
     // Syscall handling failed, stop running processor
+    if (SystemIO::isCLIMode()) {
+      m_stopReason = "unsupported_syscall";
+      m_stopSyscall = function;
+    }
+    setStopRunFlag();
+  } else if (SystemIO::takeInputExhausted()) {
+    // Headless, a read that found no input would otherwise be retried or
+    // spun on forever; nothing will ever supply it.
+    m_stopReason = "input_requested";
+    m_stopSyscall = function;
     setStopRunFlag();
   }
 }

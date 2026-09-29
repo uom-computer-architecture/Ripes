@@ -221,6 +221,30 @@ public:
     Q_UNREACHABLE();
   }
 
+  QString disabledExtensionOf(const QString &mnemonic) const override {
+    for (const auto &ext : m_supportedExtensions) {
+      if (m_enabledExtensions.contains(ext))
+        continue;
+      InstrVec instructions;
+      PseudoInstrVec pseudoInstructions;
+      switch (ext.unicode()->toLatin1()) {
+      case 'M':
+        RVISA::ExtM::enableExt(this, instructions, pseudoInstructions);
+        break;
+      case 'C':
+        RVISA::ExtC::enableExt(this, instructions, pseudoInstructions);
+        break;
+      }
+      for (const auto &instr : instructions)
+        if (instr->name() == mnemonic)
+          return ext;
+      for (const auto &instr : pseudoInstructions)
+        if (instr->name() == mnemonic)
+          return ext;
+    }
+    return QString();
+  }
+
   const InstrVec &instructions() const override { return m_instructions; }
   const PseudoInstrVec &pseudoInstructions() const override {
     return m_pseudoInstructions;

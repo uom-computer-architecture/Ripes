@@ -30,9 +30,12 @@ struct PseudoInstruction : public PseudoInstructionBase {
   Result<std::vector<LineTokens>> expand(const TokenizedSrcLine &line,
                                          SymbolMap &symbols) const override {
     if (line.tokens.length() != expectedTokens()) {
-      return Error(line, "Instruction '" + name() + "' expects " +
-                             QString::number(expectedTokens() - 1) +
-                             " arguments, but got " +
+      const auto expected = expectedTokens() - 1;
+      QString msg = "'" + name() + "' takes " + QString::number(expected) +
+                    (expected == 1 ? " operand" : " operands");
+      if (expected > 0)
+        msg += " (" + PseudoInstrImpl::Fields::describe().join(", ") + ")";
+      return Error(line, msg + ", but the line has " +
                              QString::number(line.tokens.length() - 1));
     }
 
@@ -47,7 +50,10 @@ struct PseudoReg : public Reg<PseudoReg<index, ISAImpl>, index,
 };
 
 template <unsigned index>
-struct PseudoImm : public Imm<index, 1, Repr::Hex, ImmPart<0, index, index>> {};
+struct PseudoImm : public Imm<index, 1, Repr::Hex, ImmPart<0, index, index>> {
+  // Pseudo-instructions accept either: 'li' a number, 'la'/'j' a label.
+  static void describe(QStringList &kinds) { kinds << "label or number"; }
+};
 
 using PseudoInstrVec = std::vector<std::shared_ptr<PseudoInstructionBase>>;
 

@@ -140,6 +140,17 @@ public:
   }
   virtual QString extensionDescription(const QString &ext) const = 0;
 
+  /**
+   * @brief disabledExtensionOf
+   * Returns the supported-but-not-enabled extension that defines the
+   * (pseudo-)instruction @p mnemonic, or an empty string if no such extension
+   * exists. Lets the assembler tell "this instruction does not exist" apart
+   * from "this instruction is not enabled for this processor".
+   */
+  virtual QString disabledExtensionOf(const QString & /*mnemonic*/) const {
+    return QString();
+  }
+
   /// Returns the set of instructions for this ISA
   virtual const InstrVec &instructions() const = 0;
   /// Returns the set of pseudoinstructions for this ISA

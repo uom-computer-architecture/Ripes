@@ -1,11 +1,16 @@
 #include "ripes_syscall.h"
 
 #include "processorhandler.h"
+#include "systemio.h"
 
 namespace Ripes {
 
 bool SyscallManager::execute(SyscallID id) {
   if (m_syscalls.count(id) == 0) {
+    // Headless, a modal dialog is never dismissed and would block the
+    // simulator forever. The caller stops the run and reports the reason.
+    if (SystemIO::isCLIMode())
+      return false;
     postToGUIThread([id] {
       if (auto reg = ProcessorHandler::currentISA()->syscallReg();
           reg.has_value()) {

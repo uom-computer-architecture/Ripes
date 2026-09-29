@@ -222,10 +222,26 @@ using ResolveSymbolFunc =
     std::function<Result<>(const Location &, Reg_T, Instr_T &, Reg_T)>;
 
 /** @brief A request to link a field of an instruction to a symbol. */
+/// "'add' needs a register as operand 3, but the line has only 2 operands".
+/// Operands are counted from 1, as a student reads the line; the encoder's
+/// field names and 0-based indices mean nothing to them.
+inline QString missingOperand(const TokenizedSrcLine &line,
+                              unsigned tokenIndex, const QString &kind) {
+  const auto given = line.tokens.size() - 1;
+  return "'" + line.tokens.at(0) + "' needs " + kind + " as operand " +
+         QString::number(tokenIndex + 1) + ", but the line has " +
+         (given == 0 ? QString("no operands")
+                     : "only " + QString::number(given) +
+                           (given == 1 ? " operand" : " operands"));
+}
+
 struct FieldLinkRequest {
   ResolveSymbolFunc resolveSymbol;
   QString symbol = QString();
   QString relocation = QString();
+  /// True if the symbol's value is taken relative to the instruction's
+  /// address (branch and jump targets) rather than used as-is.
+  bool pcRelative = false;
 };
 
 /// Struct used to dynamically index OpParts
@@ -340,6 +356,11 @@ private:
       else
         return Result<>::def();
     }
+    static void describe(QStringList &kinds) {
+      IndexedField::describe(kinds);
+      if constexpr (sizeof...(NextFields) > 0)
+        NextIndexedFieldSet::describe(kinds);
+    }
     constexpr static bool decode(const Instr_T instruction, const Reg_T address,
                                  const ReverseSymbolMap &symbolMap,
                                  LineTokens &line) {
@@ -383,6 +404,14 @@ public:
   /// Returns the number of Fields in this set.
   constexpr static unsigned numFields() { return sizeof...(Fields); }
 
+  /// What each operand is, in order, for error messages: "register", ...
+  static QStringList describe() {
+    QStringList kinds;
+    if constexpr (sizeof...(Fields) > 0)
+      IndexedFields::describe(kinds);
+    return kinds;
+  }
+
 private:
   /// This calls all BitRanges' static assertions
   constexpr static BitRanges ranges{};
@@ -410,15 +439,27 @@ struct Reg : public Field<tokenIndex, BitRangeSet<BitRange>> {
   static Result<> apply(const TokenizedSrcLine &line, Instr_T &instruction,
                         FieldLinkRequest &) {
     if (tokenIndex + 1 >= line.tokens.size()) {
-      return Error(line, "Required field '" +
-                             QString(RegImpl::getName().data()) + "' (index " +
-                             QString::number(tokenIndex) + ") not provided");
+      return Error(line, missingOperand(line, tokenIndex, "a register"));
     }
     const auto &regToken = line.tokens.at(tokenIndex + 1);
     bool success = false;
     unsigned regIndex = RegInfo().regNumber(regToken, success);
     if (!success) {
-      return Error(line, "Unknown register '" + regToken + "'");
+      QString msg = "operand " + QString::number(tokenIndex + 1) + " of '" +
+                    line.tokens.at(0) + "' must be a register, but '" +
+                    regToken + "' is not one";
+      // A number where a register belongs: comparing with 0 ("bge t0, 0, l"),
+      // or the register form of an instruction used with a constant ("sll
+      // a4, a1, 2"). This field cannot tell which, so offer both remedies.
+      bool isNumber = false;
+      const auto number = regToken.toLongLong(&isNumber, 0);
+      if (isNumber && number == 0)
+        msg += ". For the value 0, use the register 'zero'";
+      else if (isNumber)
+        msg += ". Put the number in a register first (e.g. 'li t0, " +
+               regToken + "'), or use the instruction's immediate form if it "
+               "has one (e.g. 'addi', 'slli')";
+      return Error(line, msg);
     }
 
     // Allow implementations to hook into verification.
@@ -429,6 +470,8 @@ struct Reg : public Field<tokenIndex, BitRangeSet<BitRange>> {
     instruction |= BitRange().apply(regIndex);
     return Result<>::def();
   }
+
+  static void describe(QStringList &kinds) { kinds << "register"; }
 
   // Implementation-specific hook for verification of apply-time register index.
   static Result<> verifyApply(const TokenizedSrcLine &, unsigned) {
@@ -639,12 +682,18 @@ struct ImmBase : public Field<tokenIndex, typename ImmParts::BitRanges> {
     return Result<>::def();
   }
 
+  static void describe(QStringList &kinds) {
+    kinds << (symbolType == SymbolType::Relative ? "label" : "number");
+  }
+
   /// Applies this immediate's encoding to the instruction.
   static Result<> apply(const TokenizedSrcLine &line, Instr_T &instruction,
                         FieldLinkRequest &linksWithSymbol) {
     if (tokenIndex + 1 >= line.tokens.size()) {
-      return Error(line, "Required immediate with field index '" +
-                             QString::number(tokenIndex) + "' not provided");
+      return Error(line, missingOperand(line, tokenIndex,
+                                        symbolType == SymbolType::Relative
+                                            ? "a label"
+                                            : "a number"));
     }
     bool success = false;
     const Token &immToken = line.tokens[tokenIndex + 1];
@@ -657,6 +706,7 @@ struct ImmBase : public Field<tokenIndex, typename ImmParts::BitRanges> {
       linksWithSymbol.resolveSymbol = applySymbolResolution;
       linksWithSymbol.symbol = immToken;
       linksWithSymbol.relocation = immToken.relocation();
+      linksWithSymbol.pcRelative = symbolType == SymbolType::Relative;
       return Result<>::def();
     }
 
