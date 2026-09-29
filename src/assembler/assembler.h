@@ -483,6 +483,12 @@ protected:
                                  "'" + symbol +
                                      "' is a register, but this operand must "
                                      "be a number or a label"));
+        else if (symbol.contains(';'))
+          errors.push_back(Error(linkRequest,
+                                 "Unknown symbol '" + symbol +
+                                     "': ';' does not end a line or start a "
+                                     "comment in RISC-V assembly; use '#' "
+                                     "for comments"));
         else
           errors.push_back(*err);
         continue;
@@ -518,10 +524,22 @@ protected:
               linkRequest, symbolValue, instr, linkReqAddress(linkRequest));
           res.isError()) {
         const auto labelIt = m_symbolMap.abs.find(Symbol(symbol));
+        const bool isLabel = labelIt != m_symbolMap.abs.end() &&
+                             labelIt->first.is(Symbol::Type::Address);
+        const QString labelSection =
+            isLabel ? sectionContaining(program, symbolValue) : QString();
         if (linkRequest.fieldRequest.relocation.isEmpty() &&
-            !linkRequest.fieldRequest.pcRelative &&
-            labelIt != m_symbolMap.abs.end() &&
-            labelIt->first.is(Symbol::Type::Address)) {
+            linkRequest.fieldRequest.pcRelative && isLabel &&
+            !labelSection.isEmpty() && labelSection != ".text") {
+          // A jump or branch to a label that is not code: usually because the
+          // code itself was written after '.data' with no '.text' before it.
+          errors.push_back(Error(
+              linkRequest, "'" + symbol + "' is in the " + labelSection +
+                               " section, so it is data, not code: a jump or "
+                               "branch cannot go there. Put your code after "
+                               "a '.text' line"));
+        } else if (linkRequest.fieldRequest.relocation.isEmpty() &&
+                   !linkRequest.fieldRequest.pcRelative && isLabel) {
           // A label used as an immediate ("addi a0, zero, input_n") stands
           // for its address, a number the student never wrote.
           errors.push_back(Error(
@@ -545,6 +563,16 @@ protected:
     } else {
       return {NoPassResult()};
     }
+  }
+
+  /// Name of the section whose bytes include @p address, or an empty string.
+  static QString sectionContaining(const Program &program, Reg_T address) {
+    for (const auto &[name, section] : program.sections) {
+      if (address >= section.address &&
+          address <= section.address + section.data.size())
+        return name;
+    }
+    return QString();
   }
 
   /// True if @p token names a register of this ISA.

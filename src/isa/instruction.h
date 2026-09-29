@@ -448,14 +448,17 @@ struct Reg : public Field<tokenIndex, BitRangeSet<BitRange>> {
       QString msg = "operand " + QString::number(tokenIndex + 1) + " of '" +
                     line.tokens.at(0) + "' must be a register, but '" +
                     regToken + "' is not one";
-      // A number where a register belongs is usually the register form of an
-      // instruction used with a constant ("sll a4, a1, 2"). Not so when the
-      // instruction already is an immediate form: then an operand is missing.
+      // A number where a register belongs: comparing with 0 ("bge t0, 0, l"),
+      // or the register form of an instruction used with a constant ("sll
+      // a4, a1, 2"). This field cannot tell which, so offer both remedies.
       bool isNumber = false;
-      regToken.toLongLong(&isNumber, 0);
-      if (isNumber && !line.tokens.at(0).endsWith('i'))
-        msg += ". Instructions that take a number instead end in 'i', "
-               "e.g. 'addi', 'slli'";
+      const auto number = regToken.toLongLong(&isNumber, 0);
+      if (isNumber && number == 0)
+        msg += ". For the value 0, use the register 'zero'";
+      else if (isNumber)
+        msg += ". Put the number in a register first (e.g. 'li t0, " +
+               regToken + "'), or use the instruction's immediate form if it "
+               "has one (e.g. 'addi', 'slli')";
       return Error(line, msg);
     }
 
