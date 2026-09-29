@@ -245,7 +245,7 @@ protected:
       if (line.value().isEmpty())
         continue;
       TokenizedSrcLine tsl(line.index());
-      runOperation(tokens, tokenizeQuotes, tsl, line.value());
+      runOperation(tokens, tokenizeQuotes, tsl, stripComment(line.value()));
 
       runOperation(remainingTokens, splitCommentFromLine, tokens);
 

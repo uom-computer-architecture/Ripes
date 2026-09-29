@@ -104,6 +104,12 @@ protected:
   splitDirectivesFromLine(const Location &location,
                           const LineTokens &tokens) const;
 
+  /// Removes the comment from a raw source line, before it is tokenized. A
+  /// comment may contain quotes ('don't', "x") and may follow an operand with
+  /// no space ("t3# note"); neither must affect the code before it. A comment
+  /// delimiter inside a string or character literal is not a comment.
+  QString stripComment(const QString &line) const;
+
   /// Given an input set of tokens, splits away commented code from the tokens
   /// based on the comment delimiter, i.e.:
   /// {"a", "b", "#", "c"} => {"a", "b"}

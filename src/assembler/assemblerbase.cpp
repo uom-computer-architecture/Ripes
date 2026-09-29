@@ -194,6 +194,29 @@ AssemblerBase::splitDirectivesFromLine(const Location &location,
   }
 }
 
+QString AssemblerBase::stripComment(const QString &line) const {
+  bool inString = false;
+  for (qsizetype i = 0; i < line.size(); ++i) {
+    const QChar ch = line.at(i);
+    if (inString) {
+      if (ch == '\\')
+        ++i; // skip the escaped character
+      else if (ch == '"')
+        inString = false;
+    } else if (ch == '"') {
+      inString = true;
+    } else if (ch == '\'') {
+      // A character literal such as '#', '"' or '\n': skip over it whole.
+      const qsizetype len = line.mid(i + 1, 1) == "\\" ? 4 : 3;
+      if (line.mid(i + len - 1, 1) == "'")
+        i += len - 1;
+    } else if (ch == commentDelimiter()) {
+      return line.left(i);
+    }
+  }
+  return line;
+}
+
 Result<QStringList>
 AssemblerBase::splitCommentFromLine(const QStringList &stringTokens) const {
   if (stringTokens.size() == 0) {
@@ -203,15 +226,7 @@ AssemblerBase::splitCommentFromLine(const QStringList &stringTokens) const {
   QStringList preCommentTokens;
   preCommentTokens.reserve(stringTokens.size());
   for (const auto &token : stringTokens) {
-    // A comment may follow an operand with no space before it ("t3# note"),
-    // as other RISC-V assemblers accept. Quoted strings and character
-    // literals are single tokens and may legitimately contain the delimiter.
-    const bool literal = token.startsWith('"') || token.startsWith('\'');
-    const auto commentAt = literal ? -1 : token.indexOf(commentDelimiter());
-    if (commentAt == 0) {
-      break;
-    } else if (commentAt > 0) {
-      preCommentTokens.push_back(token.left(commentAt));
+    if (token.startsWith(commentDelimiter())) {
       break;
     } else {
       preCommentTokens.push_back(token);
