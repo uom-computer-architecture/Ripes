@@ -7,6 +7,7 @@
 #include "radix.h"
 #include "syscall/systemio.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMap>
@@ -117,7 +118,9 @@ int CLIRunner::applyDataInit() {
 
     if (!byName.contains(label)) {
       error("Unknown symbol '" + label + "' specified (--datainit).");
-      return 1;
+      return fail({{"status", "input_error"},
+                   {"kind", "unknown_symbol"},
+                   {"symbol", label}});
     }
     const AInt addr = byName[label];
 
@@ -127,7 +130,10 @@ int CLIRunner::applyDataInit() {
       const VInt v = decodeRadixValue(values[i], &ok);
       if (!ok) {
         error("Invalid value '" + values[i] + "' specified (--datainit).");
-        return 1;
+        return fail({{"status", "input_error"},
+                     {"kind", "invalid_value"},
+                     {"symbol", label},
+                     {"value", values[i]}});
       }
       // Words are 4 bytes (RV32 word size), matching --memdump's stride.
       ProcessorHandler::writeMem(addr + i * 4, v, 4);
@@ -160,10 +166,24 @@ int CLIRunner::processInput() {
     if (res.errors.size() == 0)
       ProcessorHandler::loadProgram(std::make_shared<Program>(res.program));
     else {
+      // Every assembler error carries the source line it came from; report
+      // it 1-based, as editors number lines.
       error("Error during assembly:");
-      for (auto &err : res.errors)
-        info(err.errorMessage(), true);
-      return 1;
+      QJsonArray errors;
+      for (auto &err : res.errors) {
+        QJsonObject e{{"message", err.errorMessage()}};
+        if (err.isKnownSourceLine()) {
+          e["line"] = static_cast<qint64>(err.sourceLine() + 1);
+          info("line " + QString::number(err.sourceLine() + 1) + ": " +
+                   err.errorMessage(),
+               true);
+        } else {
+          e["line"] = QJsonValue::Null;
+          info(err.errorMessage(), true);
+        }
+        errors.append(e);
+      }
+      return fail({{"status", "assembly_error"}, {"errors", errors}});
     }
     break;
   };
@@ -293,7 +313,7 @@ int CLIRunner::runModel() {
     ProcessorHandler::stopRun();
     error("Simulation did not finish within the specified timeout (" +
           QString::number(m_options.timeout) + " ms)");
-    return 1;
+    return fail({{"status", "timeout"}, {"timeout_ms", m_options.timeout}});
   }
 
   return 0;
@@ -326,7 +346,7 @@ int CLIRunner::postRun() {
 
   if (m_options.jsonOutput) {
     // Telemetry output
-    QJsonObject jsonOutput;
+    QJsonObject jsonOutput{{"status", "ok"}};
     for (auto &telemetry : m_options.telemetry)
       if (telemetry->isEnabled())
         // Keyed on key() rather than prettyKey(): this output is machine-
@@ -351,6 +371,25 @@ int CLIRunner::postRun() {
     outputFile->close();
 
   return 0;
+}
+
+int CLIRunner::fail(QJsonObject result) {
+  if (!m_options.jsonOutput)
+    return 1;
+
+  const QByteArray json = QJsonDocument(result).toJson(QJsonDocument::Indented);
+  if (m_options.outputFile.isEmpty()) {
+    std::cout << json.toStdString() << std::flush;
+    return 1;
+  }
+  QFile outputFile(m_options.outputFile);
+  if (!outputFile.open(QIODevice::Truncate | QIODevice::Text |
+                       QIODevice::WriteOnly)) {
+    error("Failed to open output file");
+    return 1;
+  }
+  outputFile.write(json);
+  return 1;
 }
 
 /**

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "clioptions.h"
+#include <QJsonObject>
 #include <QObject>
 
 namespace Ripes {
@@ -30,6 +31,12 @@ private:
 
   /// Prints requested telemetry to the console/output file.
   int postRun();
+
+  /// Reports a run that stopped before telemetry could be gathered. With
+  /// --json the result is written where postRun() would have written, so a
+  /// caller always gets a machine-readable outcome instead of having to parse
+  /// the console text. Always returns 1.
+  int fail(QJsonObject result);
   void info(QString msg, bool alwaysPrint = false, bool header = false,
             const QString &prefix = "INFO");
   void error(const QString &msg);

@@ -154,7 +154,7 @@ public:
            "Use Location::unknown() to construct unknown locations");
   }
   QString toString() const {
-    return isKnownSourceLine() ? "UNKNOWN" : QString::number(m_sourceLine);
+    return isKnownSourceLine() ? QString::number(m_sourceLine) : "UNKNOWN";
   }
   bool operator==(const Location &other) const {
     return this->sourceLine() == other.sourceLine();
