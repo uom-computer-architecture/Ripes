@@ -1008,7 +1008,7 @@ struct Bleu : public PseudoInstruction<Bleu> {
 
 template <bool isRV64>
 struct Li : public PseudoInstruction<Li<isRV64>> {
-  struct Fields : public FieldSet<PseudoReg, PseudoImm> {};
+  struct Fields : public FieldSet<PseudoReg, PseudoNumber> {};
 
   static Result<std::vector<LineTokens>>
   expander(const PseudoInstruction<Li<isRV64>> &, const TokenizedSrcLine &line,
