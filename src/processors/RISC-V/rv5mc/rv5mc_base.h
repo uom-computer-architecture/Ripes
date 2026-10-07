@@ -187,6 +187,12 @@ public:
     }
   }
   AInt nextFetchedAddress() const override { return pc_src->out.uValue(); }
+  std::optional<AInt> returnToZeroPc() const override {
+    return returnToZero(pc_old_reg->out.uValue(), decode->exp_instr.uValue(),
+                        nextFetchedAddress(),
+                        control->getCurrentState() == FSMState::WBJ &&
+                            pc_reg->enable.uValue());
+  }
   QString stageName(StageIndex stage) const override {
     // clang-format off
         switch (StageFromIndex(stage.index())) {

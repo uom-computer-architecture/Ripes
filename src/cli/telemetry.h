@@ -222,6 +222,21 @@ public:
     }
     m["cycles"] =
         QVariant::fromValue(ProcessorHandler::getProcessor()->getCycleCount());
+    if (ProcessorHandler::maxCyclesExceeded()) {
+      if (const auto pc = ProcessorHandler::returnToZeroPc()) {
+        QVariantMap observation{
+            {"pc", QVariant::fromValue(*pc)},
+            {"target", 0},
+            {"count", QVariant::fromValue(ProcessorHandler::returnsToZero())}};
+        if (const auto program = ProcessorHandler::getProgram()) {
+          const auto &mapping = program->sourceMapping;
+          const auto it = mapping.find(*pc);
+          if (it != mapping.end() && !it->second.empty())
+            observation["line"] = static_cast<qint64>(*it->second.begin() + 1);
+        }
+        m["return_to_zero"] = observation;
+      }
+    }
     return m;
   }
 };

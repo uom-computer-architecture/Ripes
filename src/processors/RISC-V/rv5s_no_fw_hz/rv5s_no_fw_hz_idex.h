@@ -17,6 +17,7 @@ public:
     setDescription("Instruction decode/execute stage separating register");
     CONNECT_REGISTERED_CLEN_INPUT(pc4, clear, enable);
     CONNECT_REGISTERED_CLEN_INPUT(pc, clear, enable);
+    CONNECT_REGISTERED_CLEN_INPUT(instr, clear, enable);
     CONNECT_REGISTERED_CLEN_INPUT(r1, clear, enable);
     CONNECT_REGISTERED_CLEN_INPUT(r2, clear, enable);
     CONNECT_REGISTERED_CLEN_INPUT(imm, clear, enable);
@@ -39,6 +40,7 @@ public:
 
   // Data
   REGISTERED_CLEN_INPUT(pc, XLEN);
+  REGISTERED_CLEN_INPUT(instr, c_RVInstrWidth);
   REGISTERED_CLEN_INPUT(pc4, XLEN);
   REGISTERED_CLEN_INPUT(r1, XLEN);
   REGISTERED_CLEN_INPUT(r2, XLEN);

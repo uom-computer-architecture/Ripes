@@ -205,6 +205,8 @@ void ProcessorHandler::_run() {
   ProcessorStatusManager::setStatusTimed("Running...");
   emit runStarted();
   m_maxCyclesExceeded = false;
+  m_returnToZeroPc.reset();
+  m_returnsToZero = 0;
   m_stopReason.clear();
   m_stopSyscall = 0;
 
@@ -224,7 +226,15 @@ void ProcessorHandler::_run() {
         m_maxCyclesExceeded = true;
         break;
       }
+      const auto returnPc = SystemIO::isCLIMode()
+                                ? m_currentProcessor->returnToZeroPc()
+                                : std::nullopt;
       m_currentProcessor->clock();
+      if (returnPc) {
+        if (!m_returnToZeroPc)
+          m_returnToZeroPc = returnPc;
+        ++m_returnsToZero;
+      }
     }
 
     if (vsrtl_proc) {

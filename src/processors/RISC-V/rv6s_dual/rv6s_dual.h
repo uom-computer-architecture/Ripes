@@ -80,6 +80,7 @@ public:
     pc_inc2->out >> ifid_reg->instrsize2_in;
     exec_way_instrsize->out >> idii_reg->instrsize_in;
     idii_reg->instrsize_out >> iiex_reg->instrsize_in;
+    idii_reg->instr_exec_out >> iiex_reg->instr_in;
 
     // link-address (computed in EX state when PC of EXEC way is known)
     iiex_reg->pc_out >> pc_4_link->op1;
@@ -653,6 +654,13 @@ public:
     Q_UNREACHABLE();
   }
   AInt nextFetchedAddress() const override { return pc_src->out.uValue(); }
+  std::optional<AInt> returnToZeroPc() const override {
+    return returnToZero(iiex_reg->pc_out.uValue(), iiex_reg->instr_out.uValue(),
+                        nextFetchedAddress(),
+                        stageInfo({EXEC, EX}).stage_valid &&
+                            iiex_reg->do_jmp_out.uValue() &&
+                            pc_reg->enable.uValue());
+  }
   QString stageName(StageIndex idx) const override {
     if (idx == StageIndex{EXEC, IF} || idx == StageIndex{DATA, IF})
       return "IF";

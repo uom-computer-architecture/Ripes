@@ -5,6 +5,7 @@
 #include "Signal.h"
 #include "VSRTL/core/vsrtl_design.h"
 #include <map>
+#include <optional>
 
 #include "../isa/isa_types.h"
 #include "../isa/isainfo.h"
@@ -202,6 +203,12 @@ public:
    * clock cycle
    */
   virtual AInt nextFetchedAddress() const = 0;
+
+  /// PC of a return (jalr zero, ra, 0) that will actually redirect to zero
+  /// on the next clock. Models must use the executed instruction and resolved
+  /// target, including forwarding, stalls and flushes; fetching a ret is not
+  /// evidence that it executed. Observation only: this does not stop execution.
+  virtual std::optional<AInt> returnToZeroPc() const { return std::nullopt; }
 
   /**
    * @brief stageInfo

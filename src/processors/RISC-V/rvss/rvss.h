@@ -165,6 +165,12 @@ public:
     return pc_reg->out.uValue();
   }
   AInt nextFetchedAddress() const override { return pc_src->out.uValue(); }
+  std::optional<AInt> returnToZeroPc() const override {
+    return returnToZero(pc_reg->out.uValue(), decode->exp_instr.uValue(),
+                        nextFetchedAddress(),
+                        stageInfo({0, 0}).stage_valid &&
+                            controlflow_or->out.uValue());
+  }
   QString stageName(StageIndex) const override { return "•"; }
   StageInfo stageInfo(StageIndex) const override {
     return StageInfo({pc_reg->out.uValue(),

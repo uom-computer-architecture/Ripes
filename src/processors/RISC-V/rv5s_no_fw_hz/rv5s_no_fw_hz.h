@@ -164,6 +164,7 @@ public:
     registerFile->r1_out >> idex_reg->r1_in;
     registerFile->r2_out >> idex_reg->r2_in;
     immediate->imm >> idex_reg->imm_in;
+    ifid_reg->instr_out >> idex_reg->instr_in;
 
     // Control
     decode->wr_reg_idx >> idex_reg->wr_reg_idx_in;
@@ -279,6 +280,12 @@ public:
     // clang-format on
   }
   AInt nextFetchedAddress() const override { return pc_src->out.uValue(); }
+  std::optional<AInt> returnToZeroPc() const override {
+    return returnToZero(idex_reg->pc_out.uValue(), idex_reg->instr_out.uValue(),
+                        nextFetchedAddress(),
+                        stageInfo({0, EX}).stage_valid &&
+                            idex_reg->do_jmp_out.uValue());
+  }
   QString stageName(StageIndex idx) const override {
     // clang-format off
         switch (idx.index()) {
