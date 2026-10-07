@@ -47,6 +47,7 @@ public:
       : RipesVSRTLProcessor("Multicycle RISC-V Processor") {
     m_enabledISA = ISAInfoRegistry::getISA<XLenToRVISA<XLEN>()>(extensions);
     decode->setISA(m_enabledISA);
+    fetch_uncompress->setISA(m_enabledISA);
 
     // Program counter
     pc_src->out >> pc_reg->in;
@@ -59,7 +60,14 @@ public:
 
     2 >> pc_inc->get(PcInc::INC2);
     4 >> pc_inc->get(PcInc::INC4);
-    decode->Pc_Inc >> pc_inc->select;
+    // During IF, the instruction register still holds the previous
+    // instruction. Advance by the width of the instruction being fetched,
+    // otherwise a mixed 16/32-bit program can jump into an instruction.
+    decode->instr >> fetch_uncompress->instr;
+    decode->Pc_Inc >> *pc_inc_src->ins[0];
+    fetch_uncompress->Pc_Inc >> *pc_inc_src->ins[1];
+    control->ir_write >> pc_inc_src->select;
+    pc_inc_src->out >> pc_inc->select;
 
     // -----------------------------------------------------------------------
     // Decode
@@ -139,6 +147,7 @@ public:
   SUBCOMPONENT(control, RVMCControl);
   SUBCOMPONENT(immediate, TYPE(Immediate<XLEN>));
   SUBCOMPONENT(decode, TYPE(DecodeUncompress<XLEN>));
+  SUBCOMPONENT(fetch_uncompress, TYPE(Uncompress<XLEN>));
   SUBCOMPONENT(branch_unit, TYPE(BranchSimple<XLEN>));
 
   // Registers
@@ -155,6 +164,7 @@ public:
   SUBCOMPONENT(alu_op1_src, TYPE(EnumMultiplexer<AluSrc1, XLEN>));
   SUBCOMPONENT(alu_op2_src, TYPE(EnumMultiplexer<AluSrc2, XLEN>));
   SUBCOMPONENT(pc_inc, TYPE(EnumMultiplexer<PcInc, XLEN>));
+  SUBCOMPONENT(pc_inc_src, TYPE(Multiplexer<2, 1>));
 
   // Gates
   SUBCOMPONENT(br_and, TYPE(And<1, 2>));
