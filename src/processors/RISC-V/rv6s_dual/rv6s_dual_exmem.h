@@ -19,6 +19,7 @@ public:
     CONNECT_REGISTERED_CLEN_INPUT(reg_wr_src_ctrl_data, this->clear,
                                   this->enable);
     CONNECT_REGISTERED_CLEN_INPUT(pc_data, this->clear, this->enable);
+    CONNECT_REGISTERED_CLEN_INPUT(instr_data, this->clear, this->enable);
     CONNECT_REGISTERED_CLEN_INPUT(alures_data, this->clear, this->enable);
     CONNECT_REGISTERED_CLEN_INPUT(exec_valid, this->clear, this->enable);
     CONNECT_REGISTERED_CLEN_INPUT(data_valid, this->clear, this->enable);
@@ -29,6 +30,7 @@ public:
   REGISTERED_CLEN_INPUT(reg_wr_src_ctrl_dual, enumBitWidth<RegWrSrcDual>());
   REGISTERED_CLEN_INPUT(reg_wr_src_ctrl_data, enumBitWidth<RegWrSrcDataDual>());
   REGISTERED_CLEN_INPUT(pc_data, XLEN);
+  REGISTERED_CLEN_INPUT(instr_data, 32);
 
   REGISTERED_CLEN_INPUT(alures_data, XLEN);
 

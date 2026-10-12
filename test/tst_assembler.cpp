@@ -46,6 +46,7 @@ private slots:
   void tst_riscv();
   void tst_relativeLabels();
   void tst_parentheses();
+  void tst_studentDiagnostics();
 
 private:
   QString createProgram(int entries) {
@@ -104,6 +105,36 @@ struct RVTestTuple {
   ProcessorID id;
   QString testDir;
 };
+
+void tst_Assembler::tst_studentDiagnostics() {
+  auto isa = std::make_shared<ISAInfo<ISA::RV32I>>(QStringList());
+  auto assembler = ISA_Assembler<ISA::RV32I>(isa);
+  for (const auto &operand : {"1;", "0xGG", "0b102", "missing_constant"}) {
+    const auto res = assembler.assembleRaw("li a0," + QString(operand));
+    QCOMPARE(res.errors.size(), size_t(1));
+    QVERIFY(!res.errors.front().errorMessage().contains("use 'la'"));
+    QVERIFY(res.errors.front().errorMessage().contains("'li' needs a number"));
+  }
+  const auto forward =
+      assembler.assembleRaw("li a0,input_n\n.data\ninput_n: .word 0\n");
+  QVERIFY(forward.errors.front().errorMessage().contains("it is a label"));
+  const auto expression = assembler.assembleRaw(
+      ".data\ninput_n: .word 0\n.text\naddi a0,zero,input_n+4\n");
+  QCOMPARE(expression.errors.size(), size_t(1));
+  QCOMPARE(expression.errors.front().sourceLine(), unsigned(3));
+  QVERIFY(expression.errors.front().errorMessage().contains("input_n+4"));
+  QVERIFY(expression.errors.front().errorMessage().contains(
+      "uses label 'input_n'"));
+
+  // Encoded instructions in .text still have a real source location.
+  const auto raw = assembler.assembleRaw(".text\n.word 0x00151513\n");
+  QVERIFY(raw.errors.empty());
+  QCOMPARE(*raw.program.sourceMapping.at(0).begin(), unsigned(1));
+  QCOMPARE(assembler.instructionName(0x00151513), QString("slli"));
+  const auto constant = assembler.assembleRaw(".equ value,7\nli a0,value\n");
+  QVERIFY(constant.errors.empty());
+  QVERIFY(assembler.m_symbolMap.abs.find("value")->first.is(Symbol::Constant));
+}
 
 QByteArray toByteArray(int64_t v, size_t size) {
   QByteArray arr;

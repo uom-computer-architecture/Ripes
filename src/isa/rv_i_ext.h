@@ -1008,7 +1008,7 @@ struct Bleu : public PseudoInstruction<Bleu> {
 
 template <bool isRV64>
 struct Li : public PseudoInstruction<Li<isRV64>> {
-  struct Fields : public FieldSet<PseudoReg, PseudoImm> {};
+  struct Fields : public FieldSet<PseudoReg, PseudoNumber> {};
 
   static Result<std::vector<LineTokens>>
   expander(const PseudoInstruction<Li<isRV64>> &, const TokenizedSrcLine &line,
@@ -1035,13 +1035,20 @@ struct Li : public PseudoInstruction<Li<isRV64>> {
                                   ">32-bit imm for non-RV64 target")
                               .arg(line.tokens.at(2)))};
         } else {
-          // Not a number, nor a constant known at this point: most often a
-          // register or a data label, which 'li' cannot take.
+          const auto &operand = line.tokens.at(2);
           bool isReg = false;
-          RV_GPRInfo().regNumber(line.tokens.at(2), isReg);
-          const QString hint =
-              isReg ? "; it is a register. To copy a register, use 'mv'"
-                    : ". To load the address of a label, use 'la'";
+          RV_GPRInfo().regNumber(operand, isReg);
+          QString hint;
+          if (operand.contains(';'))
+            hint = ". Ripes does not use ';' to end an instruction. Remove "
+                   "it, and use '#' for comments";
+          else if (isReg)
+            hint = "; it is a register. To copy a register, use 'mv'";
+          else if (symbols.isDeclaredAddress(operand))
+            hint = "; it is a label. To load its address, use 'la'";
+          else
+            hint = ". Use a valid decimal, hexadecimal (0x...) or binary "
+                   "(0b...) number, or a defined constant";
           return Result<std::vector<LineTokens>>{
               Error(line, QString("'li' needs a number, but '%1' is not one%2")
                               .arg(line.tokens.at(2), hint))};

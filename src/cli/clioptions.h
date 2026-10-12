@@ -28,6 +28,12 @@ struct CLIModeOptions {
   // writes after the program is loaded and before simulation starts.
   QStringList dataInit;
 
+  // Instruction requirements use canonical (expanded) machine mnemonics.
+  bool instructionRequirementEnabled = false;
+  QStringList requiredInstructions;
+  uint64_t instructionSourceStart = 1;
+  QString instructionRequirementError;
+
   // A list of enabled telemetry options.
   std::vector<std::shared_ptr<Telemetry>> telemetry;
 };

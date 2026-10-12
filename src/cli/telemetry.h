@@ -90,6 +90,45 @@ class InstrsRetiredTelemetry : public Telemetry {
   }
 };
 
+class InstructionHistogramTelemetry : public Telemetry {
+public:
+  QString key() const override { return "instruction_histogram"; }
+  QString description() const override {
+    return "counts of retired instructions (compressed encodings expanded)";
+  }
+  QVariant report(bool /*json*/) override {
+    QVariantMap counts;
+    QVariantMap byLine;
+    QVariantMap unmapped;
+    const auto assembler = ProcessorHandler::getAssembler();
+    const auto program = ProcessorHandler::getProgram();
+    for (const auto &[location, count] :
+         ProcessorHandler::instructionHistogram()) {
+      const auto &[pc, word] = location;
+      const auto mnemonic = assembler->instructionName(word);
+      const auto key = mnemonic.isEmpty() ? "unknown" : mnemonic;
+      counts[key] =
+          QVariant::fromValue(counts.value(key).toULongLong() + count);
+      const auto source = program->sourceMapping.find(pc);
+      if (source != program->sourceMapping.end() && !source->second.empty()) {
+        const auto line = QString::number(*source->second.begin() + 1);
+        auto lineCounts = byLine.value(line).toMap();
+        lineCounts[key] =
+            QVariant::fromValue(lineCounts.value(key).toULongLong() + count);
+        byLine[line] = lineCounts;
+      } else {
+        unmapped[key] =
+            QVariant::fromValue(unmapped.value(key).toULongLong() + count);
+      }
+    }
+    return QVariantMap{
+        {"supported", ProcessorHandler::instructionHistogramSupported()},
+        {"counts", counts},
+        {"by_line", byLine},
+        {"unmapped", unmapped}};
+  }
+};
+
 class PipelineTelemetry : public Telemetry {
 public:
   PipelineTelemetry() {}
@@ -222,6 +261,21 @@ public:
     }
     m["cycles"] =
         QVariant::fromValue(ProcessorHandler::getProcessor()->getCycleCount());
+    if (ProcessorHandler::maxCyclesExceeded()) {
+      if (const auto pc = ProcessorHandler::returnToZeroPc()) {
+        QVariantMap observation{
+            {"pc", QVariant::fromValue(*pc)},
+            {"target", 0},
+            {"count", QVariant::fromValue(ProcessorHandler::returnsToZero())}};
+        if (const auto program = ProcessorHandler::getProgram()) {
+          const auto &mapping = program->sourceMapping;
+          const auto it = mapping.find(*pc);
+          if (it != mapping.end() && !it->second.empty())
+            observation["line"] = static_cast<qint64>(*it->second.begin() + 1);
+        }
+        m["return_to_zero"] = observation;
+      }
+    }
     return m;
   }
 };

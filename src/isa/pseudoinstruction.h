@@ -55,6 +55,11 @@ struct PseudoImm : public Imm<index, 1, Repr::Hex, ImmPart<0, index, index>> {
   static void describe(QStringList &kinds) { kinds << "label or number"; }
 };
 
+template <unsigned index>
+struct PseudoNumber : public PseudoImm<index> {
+  static void describe(QStringList &kinds) { kinds << "number or constant"; }
+};
+
 using PseudoInstrVec = std::vector<std::shared_ptr<PseudoInstructionBase>>;
 
 using PseudoInstrMap =

@@ -21,9 +21,12 @@ using ExprEvalRes = Result<ExprEvalVT>;
  * implemented - to ensure precedence, parentheses must be implemented. The
  * functionality is mainly intended to be used by the assembler to expand
  * complex pseudoinstructions and as such not by the user.
+ * If resolvedSymbols is provided, fill it with the actual symbols read during
+ * evaluation, preserving their address/constant types; clear it on each call.
  */
 ExprEvalRes evaluate(const Location &, const QString &,
-                     const AbsoluteSymbolMap *variables = nullptr);
+                     const AbsoluteSymbolMap *variables = nullptr,
+                     AbsoluteSymbolMap *resolvedSymbols = nullptr);
 
 /**
  * @brief couldBeExpression

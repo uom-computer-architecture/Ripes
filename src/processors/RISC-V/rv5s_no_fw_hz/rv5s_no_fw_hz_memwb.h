@@ -16,6 +16,7 @@ public:
       : Component(name, parent) {
     setDescription("Memory/write-back stage separating register");
     CONNECT_REGISTERED_INPUT(pc);
+    CONNECT_REGISTERED_INPUT(instr);
     CONNECT_REGISTERED_INPUT(pc4);
     CONNECT_REGISTERED_INPUT(alures);
     CONNECT_REGISTERED_INPUT(mem_read);
@@ -29,6 +30,7 @@ public:
 
   // Data
   REGISTERED_INPUT(pc, XLEN);
+  REGISTERED_INPUT(instr, 32);
   REGISTERED_INPUT(pc4, XLEN);
   REGISTERED_INPUT(alures, XLEN);
   REGISTERED_INPUT(mem_read, XLEN);

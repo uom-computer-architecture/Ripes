@@ -19,6 +19,9 @@ public:
   int run();
 
 private:
+  int validateInstructionRequirement();
+  QVariantMap instructionRequirement() const;
+
   /// Process the provided source file (assembling, compiling, loading, ...)
   int processInput();
 

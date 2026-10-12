@@ -205,6 +205,12 @@ void ProcessorHandler::_run() {
   ProcessorStatusManager::setStatusTimed("Running...");
   emit runStarted();
   m_maxCyclesExceeded = false;
+  m_returnToZeroPc.reset();
+  m_returnsToZero = 0;
+  m_instructionHistogram.clear();
+  m_instructionHistogramSupported =
+      m_recordRetiredInstructions &&
+      m_currentProcessor->retiringInstructions().has_value();
   m_stopReason.clear();
   m_stopSyscall = 0;
 
@@ -224,7 +230,21 @@ void ProcessorHandler::_run() {
         m_maxCyclesExceeded = true;
         break;
       }
+      const auto returnPc = SystemIO::isCLIMode()
+                                ? m_currentProcessor->returnToZeroPc()
+                                : std::nullopt;
+      const auto retiring = m_recordRetiredInstructions
+                                ? m_currentProcessor->retiringInstructions()
+                                : std::nullopt;
       m_currentProcessor->clock();
+      if (retiring)
+        for (unsigned i = 0; i < retiring->count; ++i)
+          ++m_instructionHistogram[{retiring->pcs[i], retiring->words[i]}];
+      if (returnPc) {
+        if (!m_returnToZeroPc)
+          m_returnToZeroPc = returnPc;
+        ++m_returnsToZero;
+      }
     }
 
     if (vsrtl_proc) {

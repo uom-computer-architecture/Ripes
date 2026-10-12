@@ -16,6 +16,7 @@ public:
       : Component(name, parent) {
     setDescription("Execute/memory stage separating register");
     CONNECT_REGISTERED_CLEN_INPUT(pc, clear, enable);
+    CONNECT_REGISTERED_CLEN_INPUT(instr, clear, enable);
     CONNECT_REGISTERED_CLEN_INPUT(pc4, clear, enable);
     CONNECT_REGISTERED_CLEN_INPUT(alures, clear, enable);
     CONNECT_REGISTERED_CLEN_INPUT(r2, clear, enable);
@@ -32,6 +33,7 @@ public:
 
   // Data
   REGISTERED_CLEN_INPUT(pc, XLEN);
+  REGISTERED_CLEN_INPUT(instr, 32);
   REGISTERED_CLEN_INPUT(pc4, XLEN);
   REGISTERED_CLEN_INPUT(alures, XLEN);
   REGISTERED_CLEN_INPUT(r2, XLEN);

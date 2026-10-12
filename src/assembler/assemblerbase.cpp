@@ -41,14 +41,19 @@ AssembleResult AssemblerBase::assembleRaw(const QString &program,
 /// Resolves an expression through either the built-in symbol map, or through
 /// the expression evaluator.
 ExprEvalRes AssemblerBase::evalExpr(const Location &location,
-                                    const QString &expr) const {
+                                    const QString &expr,
+                                    AbsoluteSymbolMap *resolvedSymbols) const {
+  if (resolvedSymbols)
+    resolvedSymbols->clear();
   auto relativeMap = m_symbolMap.copyRelativeTo(location.sourceLine());
 
   auto symbolValue = relativeMap.find(expr);
   if (symbolValue != relativeMap.end()) {
+    if (resolvedSymbols)
+      resolvedSymbols->insert(*symbolValue);
     return symbolValue->second;
   } else {
-    return evaluate(location, expr, &relativeMap);
+    return evaluate(location, expr, &relativeMap, resolvedSymbols);
   }
 }
 

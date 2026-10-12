@@ -838,6 +838,15 @@ struct Instruction : public InstructionBase {
         m_name(InstrImpl::NAME.data()) {}
 
   AssembleRes assemble(const TokenizedSrcLine &tokens) override {
+    const auto expected = InstrImpl::Fields::numFields();
+    if (tokens.tokens.size() > expected + 1) {
+      QString msg = "'" + name() + "' takes " + QString::number(expected) +
+                    (expected == 1 ? " operand" : " operands");
+      if (expected > 0)
+        msg += " (" + InstrImpl::Fields::describe().join(", ") + ")";
+      return Error(tokens, msg + ", but the line has " +
+                               QString::number(tokens.tokens.size() - 1));
+    }
     Instr_T instruction = 0;
     FieldLinkRequest linksWithSymbol;
 

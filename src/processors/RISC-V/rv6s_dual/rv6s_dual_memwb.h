@@ -19,6 +19,7 @@ public:
     CONNECT_REGISTERED_INPUT(reg_wr_src_ctrl_dual);
     CONNECT_REGISTERED_INPUT(reg_wr_src_ctrl_data);
     CONNECT_REGISTERED_INPUT(pc_data);
+    CONNECT_REGISTERED_INPUT(instr_data);
     CONNECT_REGISTERED_INPUT(exec_valid);
     CONNECT_REGISTERED_INPUT(data_valid);
     CONNECT_REGISTERED_INPUT(alures_data);
@@ -29,6 +30,7 @@ public:
   REGISTERED_INPUT(reg_wr_src_ctrl_dual, enumBitWidth<RegWrSrcDual>());
   REGISTERED_INPUT(reg_wr_src_ctrl_data, enumBitWidth<RegWrSrcDataDual>());
   REGISTERED_INPUT(pc_data, XLEN);
+  REGISTERED_INPUT(instr_data, 32);
   REGISTERED_INPUT(alures_data, XLEN);
 
   // Valid signals for each way (not register clearing)

@@ -59,6 +59,9 @@ public:
                                           const ReverseSymbolMap &symbols,
                                           const AInt baseAddress = 0) const = 0;
 
+  /// Decode a captured machine instruction without consulting source or memory.
+  virtual QString instructionName(VInt word) const = 0;
+
   /// Returns the set of opcodes (as strings) which are supported by this
   /// assembler.
   virtual std::set<QString> getOpcodes() const = 0;
@@ -71,7 +74,8 @@ public:
 
   /// Resolves an expression through either the built-in symbol map, or through
   /// the expression evaluator.
-  ExprEvalRes evalExpr(const Location &location, const QString &expr) const;
+  ExprEvalRes evalExpr(const Location &location, const QString &expr,
+                       AbsoluteSymbolMap *resolvedSymbols = nullptr) const;
 
   /// Set the supported directives for this assembler.
   void setDirectives(const DirectiveVec &directives);

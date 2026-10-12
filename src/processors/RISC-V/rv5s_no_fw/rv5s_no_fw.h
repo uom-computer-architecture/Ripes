@@ -174,6 +174,7 @@ public:
     registerFile->r1_out >> idex_reg->r1_in;
     registerFile->r2_out >> idex_reg->r2_in;
     immediate->imm >> idex_reg->imm_in;
+    ifid_reg->instr_out >> idex_reg->instr_in;
 
     // Control
     decode->wr_reg_idx >> idex_reg->wr_reg_idx_in;
@@ -202,6 +203,7 @@ public:
 
     // Data
     idex_reg->pc_out >> exmem_reg->pc_in;
+    idex_reg->instr_out >> exmem_reg->instr_in;
     idex_reg->pc4_out >> exmem_reg->pc4_in;
     idex_reg->r2_out >> exmem_reg->r2_in;
     alu->res >> exmem_reg->alures_in;
@@ -223,6 +225,7 @@ public:
 
     // Data
     exmem_reg->pc_out >> memwb_reg->pc_in;
+    exmem_reg->instr_out >> memwb_reg->instr_in;
     exmem_reg->pc4_out >> memwb_reg->pc4_in;
     exmem_reg->alures_out >> memwb_reg->alures_in;
     data_mem->data_out >> memwb_reg->mem_read_in;
@@ -319,9 +322,23 @@ public:
             default: assert(false && "Processor does not contain stage");
         }
         Q_UNREACHABLE();
-    // clang-format on
+        // clang-format on
   }
   AInt nextFetchedAddress() const override { return pc_src->out.uValue(); }
+  std::optional<RetiringInstructions> retiringInstructions() const override {
+    if (!memwb_reg->valid_out.uValue() ||
+        !isExecutableAddress(memwb_reg->pc_out.uValue()))
+      return RetiringInstructions{};
+    return RetiringInstructions{
+        {memwb_reg->instr_out.uValue()}, 1, {memwb_reg->pc_out.uValue()}};
+  }
+  std::optional<AInt> returnToZeroPc() const override {
+    return returnToZero(idex_reg->pc_out.uValue(), idex_reg->instr_out.uValue(),
+                        nextFetchedAddress(),
+                        stageInfo({0, EX}).stage_valid &&
+                            idex_reg->do_jmp_out.uValue() &&
+                            pc_reg->enable.uValue());
+  }
   QString stageName(StageIndex idx) const override {
     // clang-format off
         switch (idx.index()) {
