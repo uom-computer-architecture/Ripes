@@ -68,6 +68,16 @@ void addCLIOptions(QCommandLineParser &parser, Ripes::CLIModeOptions &options) {
       "label[:nwords]"));
 
   // telemetry reporting
+  parser.addOption(QCommandLineOption(
+      "require-any-instruction",
+      "Require at least one of these canonical machine instructions to retire "
+      "(comma separated; compressed encodings use expanded names).",
+      "mnemonics"));
+  parser.addOption(QCommandLineOption(
+      "instruction-source-start",
+      "First eligible assembly source line, numbered from 1 (inclusive).",
+      "line", "1"));
+
   options.telemetry.push_back(std::make_shared<CyclesTelemetry>());
   options.telemetry.push_back(std::make_shared<InstrsRetiredTelemetry>());
   options.telemetry.push_back(
@@ -161,6 +171,28 @@ bool parseCLIOptions(QCommandLineParser &parser, QString &errorMessage,
   }
 
   options.outputFile = parser.value("output");
+
+  // Defer requirement errors to CLIRunner so --json/--output callers receive
+  // a structured configuration error, including for an empty requirement.
+  options.instructionRequirementEnabled =
+      parser.isSet("require-any-instruction");
+  if (options.instructionRequirementEnabled) {
+    options.requiredInstructions =
+        parser.value("require-any-instruction").split(',');
+    for (auto &name : options.requiredInstructions)
+      name = name.trimmed();
+    options.requiredInstructions.removeDuplicates();
+  }
+  bool validSourceStart;
+  options.instructionSourceStart =
+      parser.value("instruction-source-start").toULongLong(&validSourceStart);
+  if (!validSourceStart || options.instructionSourceStart == 0)
+    options.instructionRequirementError =
+        "--instruction-source-start must be a positive source line number";
+  else if (parser.isSet("instruction-source-start") &&
+           !options.instructionRequirementEnabled)
+    options.instructionRequirementError =
+        "--instruction-source-start requires --require-any-instruction";
 
   // Validate register initializations
   if (parser.isSet("reginit")) {

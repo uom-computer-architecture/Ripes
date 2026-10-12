@@ -34,6 +34,8 @@ See `./Ripes --help` for further information.
 |  --cycles            |  Report cycles |
 |  --iret              |  Report instructions retired |
 |  --instruction_histogram | Report retired instruction counts, with expanded compressed mnemonics and one-based source locations |
+|  --require-any-instruction <mnemonics> | Require one of the comma-separated canonical machine instructions to retire |
+|  --instruction-source-start <line> | First eligible assembly source line, numbered from 1 and inclusive (default 1); requires an instruction requirement |
 |  --cpi               |  Report cycles per instruction (CPI) |
 |  --ipc               |  Report instructions per cycle (IPC) |
 |  --pipeline          |  Report pipeline state |
@@ -64,5 +66,39 @@ Counts are 64-bit unsigned values and may serialize as strings. The histogram
 describes the clocks completed in that run, including a run stopped at a cycle
 bound; it is reset for each run. Retirement demonstrates that an instruction
 executed, not that it contributed to the program's result.
+
+## Executed instruction requirements
+
+`--require-any-instruction sll,slli` asks Ripes to evaluate the requirement from
+its captured retirement evidence. It enables collection even without `--all` or
+`--instruction_histogram`. Use real instructions from the selected ISA, not
+pseudo-instructions such as `li`. Compressed execution uses expanded names:
+request `slli`, not `c.slli`, to accept either encoding.
+
+`--instruction-source-start N` excludes caller scaffolding before source line
+`N`; the boundary is inclusive. With the default of 1, the entire run qualifies,
+including externally loaded binaries. A boundary greater than 1 requires assembly
+source and uses the assembler address mapping. Missing locations or mappings
+that cross the boundary produce an error, never a failed student requirement.
+No source regex or memory re-read is involved.
+
+JSON results include `instruction_requirement` when a requirement was requested:
+
+```json
+{
+  "status": "met",
+  "requested": ["sll", "slli"],
+  "counts": {"sll": "0", "slli": "1"}
+}
+```
+
+The verdict is `met`, `not_met`, or `error`; counts include every requested
+mnemonic and only qualifying retired instructions. An error includes `reason`:
+`retirement_unsupported`, `source_unmapped`, `source_ambiguous`, or
+`unknown_retired_instruction`. Invalid requirements or source boundaries return
+top-level `status: input_error`, `kind: invalid_instruction_requirement`, and a
+`message`, with exit code 1. A `not_met` verdict leaves the simulation status and
+exit code successful: consumers decide how to use that observable. Existing
+assembly, syscall and termination errors retain their precedence.
 
 

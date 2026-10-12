@@ -1,5 +1,6 @@
 #include "clirunner.h"
 #include "ccmanager.h"
+#include "instructionrequirement.h"
 #include "io/iomanager.h"
 #include "loaddialog.h"
 #include "processorhandler.h"
@@ -75,6 +76,9 @@ CLIRunner::CLIRunner(const CLIModeOptions &options)
  * @return 0 on success, or 1 if an error occurs during any phase.
  */
 int CLIRunner::run() {
+  if (validateInstructionRequirement())
+    return 1;
+
   if (processInput())
     return 1;
 
@@ -88,6 +92,53 @@ int CLIRunner::run() {
     return 1;
 
   return 0;
+}
+
+int CLIRunner::validateInstructionRequirement() {
+  QString problem = m_options.instructionRequirementError;
+  if (problem.isEmpty() && m_options.instructionRequirementEnabled) {
+    std::set<QString> available;
+    for (const auto &instruction :
+         ProcessorHandler::getAssembler()->getInstructionSet())
+      if (instruction->size() == 4)
+        available.insert(instruction->name());
+    for (const auto &name : m_options.requiredInstructions)
+      if (!available.count(name)) {
+        problem =
+            "'" + name +
+            "' is not a canonical machine instruction in the "
+            "selected ISA (use expanded names for compressed instructions)";
+        break;
+      }
+    if (problem.isEmpty() && m_options.instructionSourceStart > 1) {
+      if (m_options.srcType != SourceType::Assembly)
+        problem = "--instruction-source-start requires assembly source";
+      else {
+        QFile source(m_options.src);
+        // Let processInput report a missing/unreadable source file.
+        if (source.open(QIODevice::ReadOnly)) {
+          const auto lines = source.readAll().split('\n').size();
+          if (m_options.instructionSourceStart > uint64_t(lines))
+            problem = "--instruction-source-start is beyond the source file";
+        }
+      }
+    }
+  }
+  if (problem.isEmpty())
+    return 0;
+  error(problem);
+  return fail({{"status", "input_error"},
+               {"kind", "invalid_instruction_requirement"},
+               {"message", problem}});
+}
+
+QVariantMap CLIRunner::instructionRequirement() const {
+  return evaluateInstructionRequirement(
+      m_options.requiredInstructions, m_options.instructionSourceStart,
+      ProcessorHandler::instructionHistogramSupported(),
+      ProcessorHandler::instructionHistogram(),
+      ProcessorHandler::getProgram()->sourceMapping,
+      *ProcessorHandler::getAssembler());
 }
 
 /**
@@ -299,11 +350,13 @@ int CLIRunner::runModel() {
 
   // Start simulation
   ProcessorHandler::setMaxCycles(m_options.maxCycles);
-  ProcessorHandler::setInstructionHistogramEnabled(std::any_of(
-      m_options.telemetry.begin(), m_options.telemetry.end(),
-      [](const auto &t) {
-        return t->key() == "instruction_histogram" && t->isEnabled();
-      }));
+  ProcessorHandler::setInstructionHistogramEnabled(
+      m_options.instructionRequirementEnabled ||
+      std::any_of(m_options.telemetry.begin(), m_options.telemetry.end(),
+                  [](const auto &t) {
+                    return t->key() == "instruction_histogram" &&
+                           t->isEnabled();
+                  }));
   ProcessorHandler::run();
   if (m_options.timeout != 0)
     timeoutTimer.start(m_options.timeout);
@@ -360,6 +413,9 @@ int CLIRunner::postRun() {
         jsonOutput.insert(
             telemetry->key(),
             QJsonValue::fromVariant(telemetry->report(/*json=*/true)));
+    if (m_options.instructionRequirementEnabled)
+      jsonOutput.insert("instruction_requirement",
+                        QJsonValue::fromVariant(instructionRequirement()));
     *stream << QJsonDocument(jsonOutput).toJson(QJsonDocument::Indented);
   } else {
     // Telemetry output
@@ -369,6 +425,11 @@ int CLIRunner::postRun() {
         QVariant reportedValue = telemetry->report(/*json=*/false);
         *stream << qVariantToString(reportedValue) << "\n";
       }
+    if (m_options.instructionRequirementEnabled) {
+      *stream << "===== instruction requirement\n";
+      QVariant verdict = instructionRequirement();
+      *stream << qVariantToString(verdict) << "\n";
+    }
   }
 
   // Close output file if necessary
