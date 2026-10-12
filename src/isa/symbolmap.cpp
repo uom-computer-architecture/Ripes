@@ -33,12 +33,14 @@ AbsoluteSymbolMap SymbolMap::copyRelativeTo(unsigned line,
   for (auto &relSymbols : rel) {
     auto ub = relSymbols.second.upper_bound(line);
     if (ub != relSymbols.second.end())
-      res[QString::number(relSymbols.first) + afterSuffix] = ub->second;
+      res[Symbol(QString::number(relSymbols.first) + afterSuffix,
+                 Symbol::Address)] = ub->second;
 
     if (ub != relSymbols.second.begin()) {
       auto lb = ub;
       std::advance(lb, -1);
-      res[QString::number(relSymbols.first) + beforeSuffix] = lb->second;
+      res[Symbol(QString::number(relSymbols.first) + beforeSuffix,
+                 Symbol::Address)] = lb->second;
     }
   }
 

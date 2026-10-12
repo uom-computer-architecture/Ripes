@@ -168,6 +168,13 @@ public:
 
   const Matcher &getMatcher() { return *m_matcher; }
 
+  QString instructionName(VInt word) const override {
+    auto match = m_matcher->matchInstruction(word);
+    if (match.isError())
+      return {};
+    return match.value()->name();
+  }
+
   std::set<QString> getOpcodes() const override {
     std::set<QString> opcodes;
     for (const auto &iter : m_instructionMap) {
@@ -317,6 +324,10 @@ protected:
     SourceProgram expandedLines;
     expandedLines.reserve(tokenizedLines.size());
 
+    for (const auto &line : tokenizedLines)
+      for (const auto &symbol : line.symbols)
+        m_symbolMap.declaredAddresses.insert(symbol.v);
+
     for (auto tokenizedLine : llvm::enumerate(tokenizedLines)) {
       auto expandedOps = expandPseudoOp(tokenizedLine.value());
       if (expandedOps.isResult()) {
@@ -438,6 +449,14 @@ protected:
                        assembledWith->size()));
       }
       // This was a directive; append any assembled bytes to the segment.
+      // A .word/.byte in .text can encode an instruction. Preserve its real
+      // source location too; retirement must not depend on how it was written.
+      if (m_currentSection == ".text")
+        for (qsizetype byte = 0; byte < directiveBytes.size(); ++byte)
+          program
+              .sourceMapping[currentSection->address +
+                             currentSection->data.size() + byte]
+              .insert(line.sourceLine());
       currentSection->data.append(directiveBytes);
     }
     if (errors.size() != 0) {
@@ -474,7 +493,8 @@ protected:
       m_symbolMap.abs["__address__"] = linkRequestAddress;
 
       // Expression evaluation also performs symbol evaluation
-      auto exprRes = evalExpr(linkRequest, symbol);
+      AbsoluteSymbolMap resolvedSymbols;
+      auto exprRes = evalExpr(linkRequest, symbol, &resolvedSymbols);
       if (auto *err = std::get_if<Error>(&exprRes)) {
         // A register where a number or label belongs ("lw t2, a0(t1)")
         // reaches here as an unknown symbol; name what it actually is.
@@ -526,10 +546,17 @@ protected:
         const auto labelIt = m_symbolMap.abs.find(Symbol(symbol));
         const bool isLabel = labelIt != m_symbolMap.abs.end() &&
                              labelIt->first.is(Symbol::Type::Address);
+        QStringList addressLabels;
+        for (const auto &[resolved, value] : resolvedSymbols)
+          if (resolved.is(Symbol::Address))
+            addressLabels << "'" + resolved.v + "' (0x" +
+                                 QString::number(static_cast<VInt>(value), 16) +
+                                 ")";
+        const bool usesAddress = isLabel || !addressLabels.empty();
         const QString labelSection =
-            isLabel ? sectionContaining(program, symbolValue) : QString();
+            usesAddress ? sectionContaining(program, symbolValue) : QString();
         if (linkRequest.fieldRequest.relocation.isEmpty() &&
-            linkRequest.fieldRequest.pcRelative && isLabel &&
+            linkRequest.fieldRequest.pcRelative && usesAddress &&
             !labelSection.isEmpty() && labelSection != ".text") {
           // A jump or branch to a label that is not code: usually because the
           // code itself was written after '.data' with no '.text' before it.
@@ -549,6 +576,15 @@ protected:
                   "), which is too large for this operand. To read the "
                   "value stored at a label, load its address with 'la', "
                   "then use 'lw'"));
+        } else if (linkRequest.fieldRequest.relocation.isEmpty() &&
+                   !linkRequest.fieldRequest.pcRelative && usesAddress) {
+          errors.push_back(Error(
+              linkRequest,
+              "'" + symbol + "' uses label " + addressLabels.join(", ") +
+                  " and evaluates to 0x" + QString::number(symbolValue, 16) +
+                  ", which does not fit this operand. Use 'la' "
+                  "to form an address and 'lw' to read a word "
+                  "from that address"));
         } else {
           errors.push_back(res.error());
         }

@@ -299,6 +299,11 @@ int CLIRunner::runModel() {
 
   // Start simulation
   ProcessorHandler::setMaxCycles(m_options.maxCycles);
+  ProcessorHandler::setInstructionHistogramEnabled(std::any_of(
+      m_options.telemetry.begin(), m_options.telemetry.end(),
+      [](const auto &t) {
+        return t->key() == "instruction_histogram" && t->isEnabled();
+      }));
   ProcessorHandler::run();
   if (m_options.timeout != 0)
     timeoutTimer.start(m_options.timeout);

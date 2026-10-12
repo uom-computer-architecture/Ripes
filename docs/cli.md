@@ -33,11 +33,36 @@ See `./Ripes --help` for further information.
 |  --all               |  Enable all report options. |
 |  --cycles            |  Report cycles |
 |  --iret              |  Report instructions retired |
+|  --instruction_histogram | Report retired instruction counts, with expanded compressed mnemonics and one-based source locations |
 |  --cpi               |  Report cycles per instruction (CPI) |
 |  --ipc               |  Report instructions per cycle (IPC) |
 |  --pipeline          |  Report pipeline state |
 |  --regs              |  Report register values |
 |  --runinfo           |  Report simulation information in output (processor configuration, input file, ...) |
 |   --reginit <[rid:v]>|     Comma-separated list of register initialization values. The register value may be specified in signed, hex, or boolean notation. Format: `<register idx>=<value>,<register idx>=<value>` |
+
+## Retired instruction telemetry
+
+`--instruction_histogram` (also enabled by `--all`) records actual machine
+encodings and PCs at retirement. All RISC-V processor models support it. Pipeline
+models carry the fetched encoding through their valid/flush-controlled registers;
+the report does not read assembly source or re-read memory at the retiring PC.
+Stalled cycles and flushed instructions do not add counts. Both dual-issue lanes
+are observed. Compressed instructions are expanded, so `c.slli` counts as `slli`.
+
+With `--json`, `instruction_histogram` has these fields:
+
+- `supported`: whether the processor supplies retirement events.
+- `counts`: mnemonic to count for the whole run, including any caller scaffolding.
+- `by_line`: one-based assembler source line to mnemonic counts. Consumers can
+  exclude their own declared prologue lines without inspecting submitted source.
+- `unmapped`: counts for addresses without assembler source locations, such as
+  an externally loaded binary. Raw encodings emitted in `.text` by directives
+  retain source locations. An undecodable retired word is counted as `unknown`.
+
+Counts are 64-bit unsigned values and may serialize as strings. The histogram
+describes the clocks completed in that run, including a run stopped at a cycle
+bound; it is reset for each run. Retirement demonstrates that an instruction
+executed, not that it contributed to the program's result.
 
 

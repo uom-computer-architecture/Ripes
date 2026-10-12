@@ -187,6 +187,13 @@ public:
     }
   }
   AInt nextFetchedAddress() const override { return pc_src->out.uValue(); }
+  std::optional<RetiringInstructions> retiringInstructions() const override {
+    if (!control->inLastState() ||
+        !isExecutableAddress(pc_old_reg->out.uValue()))
+      return RetiringInstructions{};
+    return RetiringInstructions{
+        {decode->exp_instr.uValue()}, 1, {pc_old_reg->out.uValue()}};
+  }
   std::optional<AInt> returnToZeroPc() const override {
     return returnToZero(pc_old_reg->out.uValue(), decode->exp_instr.uValue(),
                         nextFetchedAddress(),

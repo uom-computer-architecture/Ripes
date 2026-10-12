@@ -81,6 +81,7 @@ public:
     exec_way_instrsize->out >> idii_reg->instrsize_in;
     idii_reg->instrsize_out >> iiex_reg->instrsize_in;
     idii_reg->instr_exec_out >> iiex_reg->instr_in;
+    idii_reg->instr_data_out >> iiex_reg->instr_data_in;
 
     // link-address (computed in EX state when PC of EXEC way is known)
     iiex_reg->pc_out >> pc_4_link->op1;
@@ -425,6 +426,8 @@ public:
     // Data
     iiex_reg->pc_out >>
         exmem_reg->pc_in; // @todo: Fix this - needs multiplexer aswell
+    iiex_reg->instr_out >> exmem_reg->instr_in;
+    iiex_reg->instr_data_out >> exmem_reg->instr_data_in;
     iiex_reg->pc_data_out >>
         exmem_reg->pc_data_in; //@todo: Fix this - needs multiplexer aswell
     pc_4_link->out >> exmem_reg->pc4_in;
@@ -464,6 +467,8 @@ public:
 
     // Data
     exmem_reg->pc_out >> memwb_reg->pc_in;
+    exmem_reg->instr_out >> memwb_reg->instr_in;
+    exmem_reg->instr_data_out >> memwb_reg->instr_data_in;
     exmem_reg->pc_data_out >> memwb_reg->pc_data_in;
     exmem_reg->pc4_out >> memwb_reg->pc4_in;
     exmem_reg->alures_out >> memwb_reg->alures_in;
@@ -654,6 +659,22 @@ public:
     Q_UNREACHABLE();
   }
   AInt nextFetchedAddress() const override { return pc_src->out.uValue(); }
+  std::optional<RetiringInstructions> retiringInstructions() const override {
+    RetiringInstructions retired;
+    if (memwb_reg->valid_out.uValue()) {
+      if (memwb_reg->exec_valid_out.uValue() &&
+          isExecutableAddress(memwb_reg->pc_out.uValue())) {
+        retired.pcs[retired.count] = memwb_reg->pc_out.uValue();
+        retired.words[retired.count++] = memwb_reg->instr_out.uValue();
+      }
+      if (memwb_reg->data_valid_out.uValue() &&
+          isExecutableAddress(memwb_reg->pc_data_out.uValue())) {
+        retired.pcs[retired.count] = memwb_reg->pc_data_out.uValue();
+        retired.words[retired.count++] = memwb_reg->instr_data_out.uValue();
+      }
+    }
+    return retired;
+  }
   std::optional<AInt> returnToZeroPc() const override {
     return returnToZero(iiex_reg->pc_out.uValue(), iiex_reg->instr_out.uValue(),
                         nextFetchedAddress(),
@@ -854,7 +875,7 @@ public:
           memwb_reg->exec_valid_out.uValue()) {
         amount++;
       }
-      if (isExecutableAddress(memwb_reg->pc4_out.uValue()) &&
+      if (isExecutableAddress(memwb_reg->pc_data_out.uValue()) &&
           memwb_reg->data_valid_out.uValue()) {
         amount++;
       }

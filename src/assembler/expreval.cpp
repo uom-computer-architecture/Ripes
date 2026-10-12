@@ -231,53 +231,59 @@ ExprRes parseLeft(const Location &loc, const QString &s, int &pos, int &depth) {
 }
 
 VIntS evaluate(const std::shared_ptr<Expr> &expr,
-               const AbsoluteSymbolMap *variables) {
+               const AbsoluteSymbolMap *variables,
+               AbsoluteSymbolMap *resolvedSymbols) {
   // There is a bug in GCC for variant visitors on incomplete variant types
   // (recursive), So instead we'll macro our way towards something that looks
   // like a pattern match for the variant type.
   IfExpr(Add, v) {
-    return evaluate(v->lhs, variables) + evaluate(v->rhs, variables);
+    return evaluate(v->lhs, variables, resolvedSymbols) +
+           evaluate(v->rhs, variables, resolvedSymbols);
   }
   FiExpr;
   IfExpr(Div, v) {
-    auto rhs_value = evaluate(v->rhs, variables);
+    auto rhs_value = evaluate(v->rhs, variables, resolvedSymbols);
     if (rhs_value == 0) {
       throw std::runtime_error(
           "Division by zero error in expression evaluation.");
     }
 
-    return evaluate(v->lhs, variables) / rhs_value;
+    return evaluate(v->lhs, variables, resolvedSymbols) / rhs_value;
   }
   FiExpr;
   IfExpr(Mul, v) {
-    return evaluate(v->lhs, variables) * evaluate(v->rhs, variables);
+    return evaluate(v->lhs, variables, resolvedSymbols) *
+           evaluate(v->rhs, variables, resolvedSymbols);
   }
   FiExpr;
   IfExpr(Sub, v) {
-    return evaluate(v->lhs, variables) - evaluate(v->rhs, variables);
+    return evaluate(v->lhs, variables, resolvedSymbols) -
+           evaluate(v->rhs, variables, resolvedSymbols);
   }
   FiExpr;
   IfExpr(Mod, v) {
-    auto rhs_value = evaluate(v->rhs, variables);
+    auto rhs_value = evaluate(v->rhs, variables, resolvedSymbols);
     if (rhs_value == 0) {
       throw std::runtime_error(
           "Modulo by zero error in expression evaluation.");
     }
 
-    return evaluate(v->lhs, variables) % rhs_value;
+    return evaluate(v->lhs, variables, resolvedSymbols) % rhs_value;
   }
   FiExpr;
   IfExpr(And, v) {
-    return evaluate(v->lhs, variables) & evaluate(v->rhs, variables);
+    return evaluate(v->lhs, variables, resolvedSymbols) &
+           evaluate(v->rhs, variables, resolvedSymbols);
   }
   FiExpr;
   IfExpr(Or, v) {
-    return evaluate(v->lhs, variables) | evaluate(v->rhs, variables);
+    return evaluate(v->lhs, variables, resolvedSymbols) |
+           evaluate(v->rhs, variables, resolvedSymbols);
   }
   FiExpr;
   IfExpr(SignExtend, v) {
-    return vsrtl::signextend(evaluate(v->lhs, variables),
-                             evaluate(v->rhs, variables));
+    return vsrtl::signextend(evaluate(v->lhs, variables, resolvedSymbols),
+                             evaluate(v->rhs, variables, resolvedSymbols));
   }
   FiExpr;
   IfExpr(Nothing, v) {
@@ -293,6 +299,8 @@ VIntS evaluate(const std::shared_ptr<Expr> &expr,
         auto it = variables->find(v->v);
         if (it != variables->end()) {
           value = it->second;
+          if (resolvedSymbols)
+            resolvedSymbols->insert(*it);
           ok = true;
         }
       }
@@ -311,7 +319,10 @@ VIntS evaluate(const std::shared_ptr<Expr> &expr,
 }
 
 ExprEvalRes evaluate(const Location &loc, const QString &s,
-                     const AbsoluteSymbolMap *variables) {
+                     const AbsoluteSymbolMap *variables,
+                     AbsoluteSymbolMap *resolvedSymbols) {
+  if (resolvedSymbols)
+    resolvedSymbols->clear();
   QString sNoWhitespace = s;
   sNoWhitespace.replace(" ", "");
   int pos = 0;
@@ -322,7 +333,7 @@ ExprEvalRes evaluate(const Location &loc, const QString &s,
   }
   const auto exprTreeRes = std::get<std::shared_ptr<Expr>>(exprTree);
   try {
-    return {evaluate(exprTreeRes, variables)};
+    return {evaluate(exprTreeRes, variables, resolvedSymbols)};
   } catch (const std::runtime_error &e) {
     return {Error(loc, e.what())};
   }

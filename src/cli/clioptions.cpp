@@ -70,6 +70,8 @@ void addCLIOptions(QCommandLineParser &parser, Ripes::CLIModeOptions &options) {
   // telemetry reporting
   options.telemetry.push_back(std::make_shared<CyclesTelemetry>());
   options.telemetry.push_back(std::make_shared<InstrsRetiredTelemetry>());
+  options.telemetry.push_back(
+      std::make_shared<InstructionHistogramTelemetry>());
   options.telemetry.push_back(std::make_shared<CPITelemetry>());
   options.telemetry.push_back(std::make_shared<IPCTelemetry>());
   options.telemetry.push_back(std::make_shared<PipelineTelemetry>());

@@ -225,8 +225,21 @@ public:
   static void setMaxCycles(uint64_t cycles) { get()->m_maxCycles = cycles; }
   static bool maxCyclesExceeded() { return get()->m_maxCyclesExceeded; }
 
-  static std::optional<AInt> returnToZeroPc() { return get()->m_returnToZeroPc; }
+  static std::optional<AInt> returnToZeroPc() {
+    return get()->m_returnToZeroPc;
+  }
   static uint64_t returnsToZero() { return get()->m_returnsToZero; }
+
+  static void setInstructionHistogramEnabled(bool enabled) {
+    get()->m_recordRetiredInstructions = enabled;
+  }
+  static bool instructionHistogramSupported() {
+    return get()->m_instructionHistogramSupported;
+  }
+  static const std::map<std::pair<AInt, VInt>, uint64_t> &
+  instructionHistogram() {
+    return get()->m_instructionHistogram;
+  }
 
   /**
    * @brief stopReason / stopSyscall
@@ -384,6 +397,9 @@ private:
   bool m_maxCyclesExceeded = false;
   std::optional<AInt> m_returnToZeroPc;
   uint64_t m_returnsToZero = 0;
+  bool m_recordRetiredInstructions = false;
+  bool m_instructionHistogramSupported = false;
+  std::map<std::pair<AInt, VInt>, uint64_t> m_instructionHistogram;
   QString m_stopReason;
   unsigned m_stopSyscall = 0;
   std::mutex m_clockLock;

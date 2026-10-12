@@ -4,6 +4,7 @@
 
 #include "Signal.h"
 #include "VSRTL/core/vsrtl_design.h"
+#include <array>
 #include <map>
 #include <optional>
 
@@ -29,6 +30,14 @@ struct StageInfo {
            this->state == other.state;
   }
   bool operator!=(const StageInfo &other) const { return !(*this == other); }
+};
+
+/// Captured, expanded machine encodings that retire on the next clock. A
+/// dual-issue processor can retire two instructions; bubbles retire none.
+struct RetiringInstructions {
+  std::array<VInt, 2> words{};
+  unsigned count = 0;
+  std::array<AInt, 2> pcs{};
 };
 
 /// Address is byte-aligned, and the accessed bytes are [address : address +
@@ -209,6 +218,13 @@ public:
   /// target, including forwarding, stalls and flushes; fetching a ret is not
   /// evidence that it executed. Observation only: this does not stop execution.
   virtual std::optional<AInt> returnToZeroPc() const { return std::nullopt; }
+
+  /// Use the actual instruction carried to retirement, including valid/flush
+  /// state. Do not read program source or memory at the retiring PC: stores
+  /// may have changed that memory since the instruction was fetched.
+  virtual std::optional<RetiringInstructions> retiringInstructions() const {
+    return std::nullopt;
+  }
 
   /**
    * @brief stageInfo
