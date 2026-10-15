@@ -1,13 +1,17 @@
 #include "clirunner.h"
 #include "ccmanager.h"
+#include "instructionrequirement.h"
 #include "io/iomanager.h"
 #include "loaddialog.h"
 #include "processorhandler.h"
 #include "programutilities.h"
+#include "radix.h"
 #include "syscall/systemio.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 
 namespace Ripes {
 
@@ -72,7 +76,13 @@ CLIRunner::CLIRunner(const CLIModeOptions &options)
  * @return 0 on success, or 1 if an error occurs during any phase.
  */
 int CLIRunner::run() {
+  if (validateInstructionRequirement())
+    return 1;
+
   if (processInput())
+    return 1;
+
+  if (applyDataInit())
     return 1;
 
   if (runModel())
@@ -80,6 +90,106 @@ int CLIRunner::run() {
 
   if (postRun())
     return 1;
+
+  return 0;
+}
+
+int CLIRunner::validateInstructionRequirement() {
+  QString problem = m_options.instructionRequirementError;
+  if (problem.isEmpty() && m_options.instructionRequirementEnabled) {
+    std::set<QString> available;
+    for (const auto &instruction :
+         ProcessorHandler::getAssembler()->getInstructionSet())
+      if (instruction->size() == 4)
+        available.insert(instruction->name());
+    for (const auto &name : m_options.requiredInstructions)
+      if (!available.count(name)) {
+        problem =
+            "'" + name +
+            "' is not a canonical machine instruction in the "
+            "selected ISA (use expanded names for compressed instructions)";
+        break;
+      }
+    if (problem.isEmpty() && m_options.instructionSourceStart > 1) {
+      if (m_options.srcType != SourceType::Assembly)
+        problem = "--instruction-source-start requires assembly source";
+      else {
+        QFile source(m_options.src);
+        // Let processInput report a missing/unreadable source file.
+        if (source.open(QIODevice::ReadOnly)) {
+          const auto lines = source.readAll().split('\n').size();
+          if (m_options.instructionSourceStart > uint64_t(lines))
+            problem = "--instruction-source-start is beyond the source file";
+        }
+      }
+    }
+  }
+  if (problem.isEmpty())
+    return 0;
+  error(problem);
+  return fail({{"status", "input_error"},
+               {"kind", "invalid_instruction_requirement"},
+               {"message", problem}});
+}
+
+QVariantMap CLIRunner::instructionRequirement() const {
+  return evaluateInstructionRequirement(
+      m_options.requiredInstructions, m_options.instructionSourceStart,
+      ProcessorHandler::instructionHistogramSupported(),
+      ProcessorHandler::instructionHistogram(),
+      ProcessorHandler::getProgram()->sourceMapping,
+      *ProcessorHandler::getAssembler());
+}
+
+/**
+ * Applies --datainit memory writes ("<label>=<v1>,<v2>,...") by resolving
+ * each label against the loaded program's symbol table and writing the
+ * values as consecutive 4-byte words. This is what lets the grader inject
+ * secret, per-attempt inputs instead of requiring students to hardcode them
+ * in .data -- see docs/auto-grader-architecture.md Layer 1.
+ *
+ * @return 0 on success, or 1 if a label is unresolvable or a value is malformed.
+ */
+int CLIRunner::applyDataInit() {
+  if (m_options.dataInit.isEmpty())
+    return 0;
+
+  info("Applying --datainit", false, true);
+
+  QMap<QString, AInt> byName;
+  if (auto program = ProcessorHandler::getProgram()) {
+    for (const auto &[addr, sym] : program->symbols)
+      byName[sym.v] = addr;
+  }
+
+  for (const auto &entry : m_options.dataInit) {
+    const int eq = entry.indexOf('=');
+    const QString label = entry.left(eq);
+    const QString valuesStr = entry.mid(eq + 1);
+
+    if (!byName.contains(label)) {
+      error("Unknown symbol '" + label + "' specified (--datainit).");
+      return fail({{"status", "input_error"},
+                   {"kind", "unknown_symbol"},
+                   {"symbol", label}});
+    }
+    const AInt addr = byName[label];
+
+    const QStringList values = valuesStr.split(",");
+    for (int i = 0; i < values.size(); ++i) {
+      bool ok = false;
+      const VInt v = decodeRadixValue(values[i], &ok);
+      if (!ok) {
+        error("Invalid value '" + values[i] + "' specified (--datainit).");
+        return fail({{"status", "input_error"},
+                     {"kind", "invalid_value"},
+                     {"symbol", label},
+                     {"value", values[i]}});
+      }
+      // Words are 4 bytes (RV32 word size), matching --memdump's stride.
+      ProcessorHandler::writeMem(addr + i * 4, v, 4);
+    }
+  }
 
   return 0;
 }
@@ -107,10 +217,24 @@ int CLIRunner::processInput() {
     if (res.errors.size() == 0)
       ProcessorHandler::loadProgram(std::make_shared<Program>(res.program));
     else {
+      // Every assembler error carries the source line it came from; report
+      // it 1-based, as editors number lines.
       error("Error during assembly:");
-      for (auto &err : res.errors)
-        info(err.errorMessage(), true);
-      return 1;
+      QJsonArray errors;
+      for (auto &err : res.errors) {
+        QJsonObject e{{"message", err.errorMessage()}};
+        if (err.isKnownSourceLine()) {
+          e["line"] = static_cast<qint64>(err.sourceLine() + 1);
+          info("line " + QString::number(err.sourceLine() + 1) + ": " +
+                   err.errorMessage(),
+               true);
+        } else {
+          e["line"] = QJsonValue::Null;
+          info(err.errorMessage(), true);
+        }
+        errors.append(e);
+      }
+      return fail({{"status", "assembly_error"}, {"errors", errors}});
     }
     break;
   };
@@ -225,6 +349,14 @@ int CLIRunner::runModel() {
     infoTimer.start(1000);
 
   // Start simulation
+  ProcessorHandler::setMaxCycles(m_options.maxCycles);
+  ProcessorHandler::setInstructionHistogramEnabled(
+      m_options.instructionRequirementEnabled ||
+      std::any_of(m_options.telemetry.begin(), m_options.telemetry.end(),
+                  [](const auto &t) {
+                    return t->key() == "instruction_histogram" &&
+                           t->isEnabled();
+                  }));
   ProcessorHandler::run();
   if (m_options.timeout != 0)
     timeoutTimer.start(m_options.timeout);
@@ -239,7 +371,7 @@ int CLIRunner::runModel() {
     ProcessorHandler::stopRun();
     error("Simulation did not finish within the specified timeout (" +
           QString::number(m_options.timeout) + " ms)");
-    return 1;
+    return fail({{"status", "timeout"}, {"timeout_ms", m_options.timeout}});
   }
 
   return 0;
@@ -272,12 +404,18 @@ int CLIRunner::postRun() {
 
   if (m_options.jsonOutput) {
     // Telemetry output
-    QJsonObject jsonOutput;
+    QJsonObject jsonOutput{{"status", "ok"}};
     for (auto &telemetry : m_options.telemetry)
       if (telemetry->isEnabled())
+        // Keyed on key() rather than prettyKey(): this output is machine-
+        // consumed by the grading harness, and prettyKey() strings like
+        // "# instructions retired" are not stable, parseable identifiers.
         jsonOutput.insert(
-            telemetry->prettyKey(),
+            telemetry->key(),
             QJsonValue::fromVariant(telemetry->report(/*json=*/true)));
+    if (m_options.instructionRequirementEnabled)
+      jsonOutput.insert("instruction_requirement",
+                        QJsonValue::fromVariant(instructionRequirement()));
     *stream << QJsonDocument(jsonOutput).toJson(QJsonDocument::Indented);
   } else {
     // Telemetry output
@@ -287,6 +425,11 @@ int CLIRunner::postRun() {
         QVariant reportedValue = telemetry->report(/*json=*/false);
         *stream << qVariantToString(reportedValue) << "\n";
       }
+    if (m_options.instructionRequirementEnabled) {
+      *stream << "===== instruction requirement\n";
+      QVariant verdict = instructionRequirement();
+      *stream << qVariantToString(verdict) << "\n";
+    }
   }
 
   // Close output file if necessary
@@ -294,6 +437,25 @@ int CLIRunner::postRun() {
     outputFile->close();
 
   return 0;
+}
+
+int CLIRunner::fail(QJsonObject result) {
+  if (!m_options.jsonOutput)
+    return 1;
+
+  const QByteArray json = QJsonDocument(result).toJson(QJsonDocument::Indented);
+  if (m_options.outputFile.isEmpty()) {
+    std::cout << json.toStdString() << std::flush;
+    return 1;
+  }
+  QFile outputFile(m_options.outputFile);
+  if (!outputFile.open(QIODevice::Truncate | QIODevice::Text |
+                       QIODevice::WriteOnly)) {
+    error("Failed to open output file");
+    return 1;
+  }
+  outputFile.write(json);
+  return 1;
 }
 
 /**

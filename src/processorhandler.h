@@ -215,6 +215,42 @@ public:
   static void clock() { get()->_clock(); }
 
   /**
+   * @brief setMaxCycles / maxCyclesExceeded
+   * A deterministic, machine-independent alternative to the CLI's wall-clock
+   * --timeout: bounds run() to at most `cycles` clocks (0 = unbounded) and
+   * records whether that bound, rather than normal completion, is what
+   * stopped the run. Grading must be reproducible regardless of host load,
+   * which a wall-clock timeout cannot guarantee.
+   */
+  static void setMaxCycles(uint64_t cycles) { get()->m_maxCycles = cycles; }
+  static bool maxCyclesExceeded() { return get()->m_maxCyclesExceeded; }
+
+  static std::optional<AInt> returnToZeroPc() {
+    return get()->m_returnToZeroPc;
+  }
+  static uint64_t returnsToZero() { return get()->m_returnsToZero; }
+
+  static void setInstructionHistogramEnabled(bool enabled) {
+    get()->m_recordRetiredInstructions = enabled;
+  }
+  static bool instructionHistogramSupported() {
+    return get()->m_instructionHistogramSupported;
+  }
+  static const std::map<std::pair<AInt, VInt>, uint64_t> &
+  instructionHistogram() {
+    return get()->m_instructionHistogram;
+  }
+
+  /**
+   * @brief stopReason / stopSyscall
+   * Why a syscall stopped the last run, headless: "unsupported_syscall" (a7
+   * named no system call) or "input_requested" (a read found no input), and
+   * the syscall number. Empty if no syscall stopped it.
+   */
+  static QString stopReason() { return get()->m_stopReason; }
+  static unsigned stopSyscall() { return get()->m_stopSyscall; }
+
+  /**
    * @brief stopRun
    * Sets the m_stopRunningFlag, and waits for any currently running
    * asynchronous run execution to finish.
@@ -357,6 +393,15 @@ private:
 
   QFutureWatcher<void> m_runWatcher;
   bool m_stopRunningFlag = false;
+  uint64_t m_maxCycles = 0;
+  bool m_maxCyclesExceeded = false;
+  std::optional<AInt> m_returnToZeroPc;
+  uint64_t m_returnsToZero = 0;
+  bool m_recordRetiredInstructions = false;
+  bool m_instructionHistogramSupported = false;
+  std::map<std::pair<AInt, VInt>, uint64_t> m_instructionHistogram;
+  QString m_stopReason;
+  unsigned m_stopSyscall = 0;
   std::mutex m_clockLock;
 
   /**

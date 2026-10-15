@@ -185,8 +185,8 @@ Directive equDirective() {
     int64_t value;
     getImmediateErroring(arg.line.tokens.at(1), value, arg.line);
 
-    auto err = assembler->m_symbolMap.addSymbol(arg.line, arg.line.tokens.at(0),
-                                                value);
+    auto err = assembler->m_symbolMap.addSymbol(
+        arg.line, Symbol(arg.line.tokens.at(0), Symbol::Constant), value);
     if (err) {
       return err.value();
     }

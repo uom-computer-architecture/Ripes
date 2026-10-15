@@ -68,6 +68,10 @@ private:
 
   // Flag used for aborting waiting for I/O
   static bool s_abortSyscall;
+  // Set by setCLIInput(): there is no user to answer a dialog or type input.
+  static inline bool s_cliMode = false;
+  // Set when a read from STDIN found the end of input in CLI mode.
+  static inline bool s_inputExhausted = false;
 
   // Standard I/O Channels
   enum STDIO { STDIN = 0, STDOUT = 1, STDERR = 2, STDIO_END };
@@ -372,6 +376,18 @@ public:
           return -1;
         }
         auto readData = InputStream.read(1).toUtf8();
+        if (s_cliMode && readData.isEmpty()) {
+          // End of input. In the GUI more can always be typed, so the loop
+          // waits; in CLI mode nothing more will ever arrive, and waiting
+          // would hang the simulator forever.
+          FileIOData::s_stdioMutex.unlock();
+          postToGUIThread([] { SystemIOStatusManager::clearStatus(); });
+          if (!myBuffer.isEmpty())
+            return myBuffer.size();
+          s_inputExhausted = true;
+          s_fileErrorString = "End of input";
+          return -1;
+        }
         myBuffer.append(readData);
 
         /** We spin on a wait condition with a timeout. The timeout is required
@@ -443,6 +459,17 @@ public:
   static void setCLIInput() {
     FileIOData::streams.erase(STDIN);
     FileIOData::streams.emplace(STDIN, stdin);
+    s_cliMode = true;
+  }
+
+  /// True when running headless (CLI mode): nothing may block on a user.
+  static bool isCLIMode() { return s_cliMode; }
+
+  /// True, once, after a read syscall found the end of input in CLI mode.
+  static bool takeInputExhausted() {
+    const bool exhausted = s_inputExhausted;
+    s_inputExhausted = false;
+    return exhausted;
   }
 
   /**

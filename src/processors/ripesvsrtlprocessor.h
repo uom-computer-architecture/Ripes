@@ -50,6 +50,16 @@ public:
   }
 
 protected:
+  static std::optional<AInt> returnToZero(AInt pc, VInt instruction,
+                                        AInt target, bool redirects) {
+    // Compressed c.jr ra is expanded by the processor before this point.
+    // Compare the executed encoding, not assembly source or the architectural
+    // ra register (which can differ from a forwarded/stale execution operand).
+    if (redirects && target == 0 && instruction == 0x00008067)
+      return pc;
+    return std::nullopt;
+  }
+
   MemoryAccess
   memToAccessInfo(const vsrtl::core::BaseMemory<true> *memory) const {
     MemoryAccess access;

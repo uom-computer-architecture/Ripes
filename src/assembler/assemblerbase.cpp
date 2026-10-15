@@ -31,7 +31,9 @@ void AssemblerBase::setSegmentBase(Section seg, AInt base) {
 
 AssembleResult AssemblerBase::assembleRaw(const QString &program,
                                           const SymbolMap *symbols) const {
-  const auto programLines = program.split(QRegularExpression("[\r\n]"));
+  // One entry per source line whatever the line ending. Splitting on each of
+  // '\r' and '\n' made every CRLF line two entries, doubling reported lines.
+  const auto programLines = program.split(QRegularExpression("\r\n|\r|\n"));
   return assemble(programLines, symbols,
                   Program::calculateHash(program.toUtf8()));
 }
@@ -39,14 +41,19 @@ AssembleResult AssemblerBase::assembleRaw(const QString &program,
 /// Resolves an expression through either the built-in symbol map, or through
 /// the expression evaluator.
 ExprEvalRes AssemblerBase::evalExpr(const Location &location,
-                                    const QString &expr) const {
+                                    const QString &expr,
+                                    AbsoluteSymbolMap *resolvedSymbols) const {
+  if (resolvedSymbols)
+    resolvedSymbols->clear();
   auto relativeMap = m_symbolMap.copyRelativeTo(location.sourceLine());
 
   auto symbolValue = relativeMap.find(expr);
   if (symbolValue != relativeMap.end()) {
+    if (resolvedSymbols)
+      resolvedSymbols->insert(*symbolValue);
     return symbolValue->second;
   } else {
-    return evaluate(location, expr, &relativeMap);
+    return evaluate(location, expr, &relativeMap, resolvedSymbols);
   }
 }
 
@@ -135,8 +142,12 @@ AssemblerBase::splitSymbolsFromLine(const Location &location,
           return {Error(location, "Multiple definitions of symbol '" +
                                       cleanedSymbol.v + "'")};
         } else {
-          if (cleanedSymbol.v.isEmpty() ||
-              cleanedSymbol.v.contains(s_exprOperatorsRegex)) {
+          if (cleanedSymbol.v.isEmpty()) {
+            return {Error(location,
+                          "':' with no label name before it. A label is a "
+                          "name followed by ':', e.g. 'loop:'")};
+          }
+          if (cleanedSymbol.v.contains(s_exprOperatorsRegex)) {
             return {
                 Error(location, "Invalid symbol '" + cleanedSymbol.v + "'")};
           }
@@ -144,7 +155,10 @@ AssemblerBase::splitSymbolsFromLine(const Location &location,
           symbols.insert(cleanedSymbol);
         }
       } else {
-        return {Error(location, QStringLiteral("Stray ':' in line"))};
+        return {Error(location, "'" + token +
+                                    "' looks like a label, but labels must "
+                                    "come first on a line, e.g. 'loop: addi "
+                                    "t0, t0, 1'")};
       }
     } else {
       remainingTokens.push_back(token);
@@ -183,6 +197,29 @@ AssemblerBase::splitDirectivesFromLine(const Location &location,
     return {DirectiveLinePair(
         directives.size() == 1 ? directives[0] : QString(), remainingTokens)};
   }
+}
+
+QString AssemblerBase::stripComment(const QString &line) const {
+  bool inString = false;
+  for (qsizetype i = 0; i < line.size(); ++i) {
+    const QChar ch = line.at(i);
+    if (inString) {
+      if (ch == '\\')
+        ++i; // skip the escaped character
+      else if (ch == '"')
+        inString = false;
+    } else if (ch == '"') {
+      inString = true;
+    } else if (ch == '\'') {
+      // A character literal such as '#', '"' or '\n': skip over it whole.
+      const qsizetype len = line.mid(i + 1, 1) == "\\" ? 4 : 3;
+      if (line.mid(i + len - 1, 1) == "'")
+        i += len - 1;
+    } else if (ch == commentDelimiter()) {
+      return line.left(i);
+    }
+  }
+  return line;
 }
 
 Result<QStringList>

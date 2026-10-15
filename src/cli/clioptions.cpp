@@ -49,14 +49,46 @@ void addCLIOptions(QCommandLineParser &parser, Ripes::CLIModeOptions &options) {
 
   parser.addOption(QCommandLineOption("all", "Enable all report options."));
 
+  parser.addOption(QCommandLineOption(
+      "max-cycles",
+      "Maximum number of cycles to simulate before aborting deterministically "
+      "(distinct from --timeout, which is wall-clock and therefore "
+      "host-load dependent). 0 (default) means unbounded.",
+      "n", "0"));
+  parser.addOption(QCommandLineOption(
+      "datainit",
+      "Initialize memory at a label before execution. Format: "
+      "<label>=<v1>,<v2>,... Values may be decimal, hex (0x..), or binary "
+      "(0b..) as accepted by --reginit. Repeatable.",
+      "label=values"));
+  parser.addOption(QCommandLineOption(
+      "memdump",
+      "Report memory contents at a label after execution. Format: "
+      "<label>[:<nwords>] (nwords defaults to 1). Implies --mem. Repeatable.",
+      "label[:nwords]"));
+
   // telemetry reporting
+  parser.addOption(QCommandLineOption(
+      "require-any-instruction",
+      "Require at least one of these canonical machine instructions to retire "
+      "(comma separated; compressed encodings use expanded names).",
+      "mnemonics"));
+  parser.addOption(QCommandLineOption(
+      "instruction-source-start",
+      "First eligible assembly source line, numbered from 1 (inclusive).",
+      "line", "1"));
+
   options.telemetry.push_back(std::make_shared<CyclesTelemetry>());
   options.telemetry.push_back(std::make_shared<InstrsRetiredTelemetry>());
+  options.telemetry.push_back(
+      std::make_shared<InstructionHistogramTelemetry>());
   options.telemetry.push_back(std::make_shared<CPITelemetry>());
   options.telemetry.push_back(std::make_shared<IPCTelemetry>());
   options.telemetry.push_back(std::make_shared<PipelineTelemetry>());
   options.telemetry.push_back(std::make_shared<RegisterTelemetry>());
   options.telemetry.push_back(std::make_shared<RunInfoTelemetry>(&parser));
+  options.telemetry.push_back(std::make_shared<MemoryTelemetry>());
+  options.telemetry.push_back(std::make_shared<ExitTelemetry>());
 
   for (auto &telemetry : options.telemetry) {
     QString desc = "Report " + telemetry->description();
@@ -140,6 +172,28 @@ bool parseCLIOptions(QCommandLineParser &parser, QString &errorMessage,
 
   options.outputFile = parser.value("output");
 
+  // Defer requirement errors to CLIRunner so --json/--output callers receive
+  // a structured configuration error, including for an empty requirement.
+  options.instructionRequirementEnabled =
+      parser.isSet("require-any-instruction");
+  if (options.instructionRequirementEnabled) {
+    options.requiredInstructions =
+        parser.value("require-any-instruction").split(',');
+    for (auto &name : options.requiredInstructions)
+      name = name.trimmed();
+    options.requiredInstructions.removeDuplicates();
+  }
+  bool validSourceStart;
+  options.instructionSourceStart =
+      parser.value("instruction-source-start").toULongLong(&validSourceStart);
+  if (!validSourceStart || options.instructionSourceStart == 0)
+    options.instructionRequirementError =
+        "--instruction-source-start must be a positive source line number";
+  else if (parser.isSet("instruction-source-start") &&
+           !options.instructionRequirementEnabled)
+    options.instructionRequirementError =
+        "--instruction-source-start requires --require-any-instruction";
+
   // Validate register initializations
   if (parser.isSet("reginit")) {
     const auto &procisa =
@@ -216,10 +270,42 @@ bool parseCLIOptions(QCommandLineParser &parser, QString &errorMessage,
     }
   }
 
+  if (parser.isSet("max-cycles")) {
+    bool ok;
+    options.maxCycles = parser.value("max-cycles").toULongLong(&ok);
+    if (!ok) {
+      errorMessage = "Invalid max-cycles value specified (--max-cycles).";
+      return false;
+    }
+  }
+
+  for (const auto &dataInitEntry : parser.values("datainit")) {
+    if (!dataInitEntry.contains('=')) {
+      errorMessage = "Invalid --datainit specification '" + dataInitEntry +
+                     "' (expected <label>=<v1>,<v2>,...).";
+      return false;
+    }
+    options.dataInit.push_back(dataInitEntry);
+  }
+
   // Enable selected telemetry options.
   for (auto &telemetry : options.telemetry)
     if (parser.isSet("all") || parser.isSet(telemetry->key()))
       telemetry->enable();
+
+  // --memdump implies the "mem" telemetry and carries the actual dump specs.
+  if (parser.isSet("memdump")) {
+    for (auto &telemetry : options.telemetry) {
+      if (telemetry->key() == "mem") {
+        telemetry->enable();
+        if (auto *memTelemetry =
+                dynamic_cast<MemoryTelemetry *>(telemetry.get())) {
+          for (const auto &spec : parser.values("memdump"))
+            memTelemetry->addDump(spec);
+        }
+      }
+    }
+  }
 
   return true;
 }

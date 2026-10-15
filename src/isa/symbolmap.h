@@ -8,6 +8,9 @@ namespace Ripes {
 using AbsoluteSymbolMap = std::map<Symbol, VIntS>;
 struct SymbolMap {
   AbsoluteSymbolMap abs;
+  // Names recorded by the parser, before address assignment in pass 2. This
+  // lets pseudo-instructions distinguish forward labels from bad constants.
+  std::set<QString> declaredAddresses;
   using RelativeSymbol = int;
   using SourceLine = unsigned;
   std::map<RelativeSymbol, std::map<SourceLine, VIntS>> rel;
@@ -15,6 +18,17 @@ struct SymbolMap {
   void clear() {
     abs.clear();
     rel.clear();
+    declaredAddresses.clear();
+  }
+
+  bool isDeclaredAddress(const QString &name) const {
+    if (declaredAddresses.count(name))
+      return true;
+    if (name.endsWith('f') || name.endsWith('b')) {
+      const auto local = name.chopped(1);
+      return Symbol(local).isLocal() && declaredAddresses.count(local);
+    }
+    return false;
   }
 
   std::optional<Error> addSymbol(const TokenizedSrcLine &line, const Symbol &s,
