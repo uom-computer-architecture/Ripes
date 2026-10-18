@@ -197,10 +197,10 @@ struct TokenizedSrcLine : public Location {
     if (tokenIndex < static_cast<unsigned>(tokens.size()) &&
         tokens[tokenIndex].sourceOperand) {
       const auto &token = tokens[tokenIndex];
-      const QString part = token.sourcePart == Token::Part::Base
-                               ? "base register in "
-                               : token.sourcePart == Token::Part::Offset
-                                     ? "offset in " : "";
+      const QString part =
+          token.sourcePart == Token::Part::Base     ? "base register in "
+          : token.sourcePart == Token::Part::Offset ? "offset in "
+                                                    : "";
       return part + "operand " + QString::number(token.sourceOperand) +
              " of '" + diagnosticOpcode() + "'";
     }

@@ -24,6 +24,6 @@ Result<LineTokens> joinParentheses(const Location &location,
  * and returns a list of those separated strings
  */
 Result<LineTokens> tokenizeQuotes(const Location &location,
-                                   const QString &line);
+                                  const QString &line);
 } // namespace Assembler
 } // namespace Ripes

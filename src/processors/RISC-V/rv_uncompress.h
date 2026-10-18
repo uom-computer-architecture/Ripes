@@ -1,8 +1,8 @@
 ﻿#pragma once
 
 #include "VSRTL/core/vsrtl_component.h"
-#include "riscv.h"
 #include "assembler/matcher.h"
+#include "riscv.h"
 
 namespace vsrtl {
 namespace core {

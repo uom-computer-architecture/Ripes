@@ -512,13 +512,13 @@ protected:
         // A register where a number or label belongs ("lw t2, a0(t1)")
         // reaches here as an unknown symbol; name what it actually is.
         if (isRegisterName(symbol))
-          errors.push_back(Error(linkRequest,
-                                 "'" + symbol +
+          errors.push_back(
+              Error(linkRequest, "'" + symbol +
                                      "' is a register, but this operand must "
                                      "be a number or a label"));
         else if (symbol.contains(';'))
-          errors.push_back(Error(linkRequest,
-                                 "Unknown symbol '" + symbol +
+          errors.push_back(
+              Error(linkRequest, "Unknown symbol '" + symbol +
                                      "': ';' does not end a line or start a "
                                      "comment in this Ripes assembler; use '#' "
                                      "for comments"));

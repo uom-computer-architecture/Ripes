@@ -96,7 +96,7 @@ Result<LineTokens> joinParentheses(const Location &loc,
 }
 
 Result<LineTokens> tokenizeQuotes(const Location &location,
-                                   const QString &line) {
+                                  const QString &line) {
   LineTokens tokens;
   bool inQuotes = false;
   bool escape = false;

@@ -225,8 +225,8 @@ using ResolveSymbolFunc =
 /// "'add' needs a register as operand 3, but the line has only 2 operands".
 /// Operands are counted from 1, as a student reads the line; the encoder's
 /// field names and 0-based indices mean nothing to them.
-inline QString missingOperand(const TokenizedSrcLine &line,
-                              unsigned tokenIndex, const QString &kind) {
+inline QString missingOperand(const TokenizedSrcLine &line, unsigned tokenIndex,
+                              const QString &kind) {
   if (!line.sourceOpcode.isEmpty() && line.sourceOpcode != line.tokens.front())
     return "'" + line.sourceOpcode + "' is missing " + kind;
   const auto given = line.tokens.size() - 1;
@@ -460,8 +460,7 @@ struct Reg : public Field<tokenIndex, BitRangeSet<BitRange>> {
     unsigned regIndex = RegInfo().regNumber(regToken, success);
     if (!success) {
       QString msg = line.operandLocation(tokenIndex + 1) +
-                    " must be a register, but '" +
-                    regToken + "' is not one";
+                    " must be a register, but '" + regToken + "' is not one";
       return Error(line, msg);
     }
 
@@ -844,11 +843,13 @@ struct Instruction : public InstructionBase {
     const auto expected = InstrImpl::Fields::numFields();
     if constexpr (InstrImpl::Fields::memoryOperand) {
       if (tokens.tokens.size() != expected + 1)
-        return Error(tokens, "Invalid operands for '" + tokens.diagnosticOpcode() +
-                     "': expected " + InstrImpl::Fields::sourceSyntax());
+        return Error(tokens, "Invalid operands for '" +
+                                 tokens.diagnosticOpcode() + "': expected " +
+                                 InstrImpl::Fields::sourceSyntax());
     }
     if (tokens.tokens.size() > expected + 1) {
-      QString msg = "'" + tokens.diagnosticOpcode() + "' takes " + QString::number(expected) +
+      QString msg = "'" + tokens.diagnosticOpcode() + "' takes " +
+                    QString::number(expected) +
                     (expected == 1 ? " operand" : " operands");
       if (expected > 0)
         msg += " (" + InstrImpl::Fields::describe().join(", ") + ")";
@@ -872,8 +873,8 @@ struct Instruction : public InstructionBase {
     }
 
     InstrImpl::Opcode::apply(instruction, linksWithSymbol);
-    if (auto fieldRes =
-            InstrImpl::Fields::apply(sourceTokens, instruction, linksWithSymbol);
+    if (auto fieldRes = InstrImpl::Fields::apply(sourceTokens, instruction,
+                                                 linksWithSymbol);
         fieldRes.isError()) {
       return std::get<Error>(fieldRes);
     }

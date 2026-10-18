@@ -160,7 +160,8 @@ void tst_Assembler::tst_sourceDiagnostics() {
     QVERIFY(!message.contains("Put the number"));
     QVERIFY(!message.contains("immediate form"));
   }
-  QVERIFY(assembler.assembleRaw(".data\ns: .string \"inside;literal\"\n").errors.empty());
+  QVERIFY(assembler.assembleRaw(".data\ns: .string \"inside;literal\"\n")
+              .errors.empty());
   QVERIFY(assembler.assembleRaw("lw a0,0 (sp)\n").errors.empty());
 }
 

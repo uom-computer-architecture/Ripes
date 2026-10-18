@@ -237,9 +237,10 @@ void ProcessorHandler::_run() {
       const auto returnPc = SystemIO::isCLIMode()
                                 ? m_currentProcessor->returnToZeroPc()
                                 : std::nullopt;
-      const auto retiring = (m_recordRetiredInstructions || SystemIO::isCLIMode())
-                                ? m_currentProcessor->retiringInstructions()
-                                : std::nullopt;
+      const auto retiring =
+          (m_recordRetiredInstructions || SystemIO::isCLIMode())
+              ? m_currentProcessor->retiringInstructions()
+              : std::nullopt;
       if (SystemIO::isCLIMode() && retiring) {
         for (unsigned i = 0; i < retiring->count; ++i) {
           const auto word = retiring->words[i];

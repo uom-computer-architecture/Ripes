@@ -83,9 +83,11 @@ int CLIRunner::run() {
     return 1;
 
   if (!ProcessorHandler::getProcessor()->retiringInstructions().has_value())
-    return fail({{"status", "infrastructure_error"},
-                 {"kind", "runtime_observation_unsupported"},
-                 {"message", "This processor cannot provide captured instruction observations"}});
+    return fail(
+        {{"status", "infrastructure_error"},
+         {"kind", "runtime_observation_unsupported"},
+         {"message",
+          "This processor cannot provide captured instruction observations"}});
 
   if (applyDataInit())
     return 1;
@@ -153,7 +155,8 @@ QVariantMap CLIRunner::instructionRequirement() const {
  * secret, per-attempt inputs instead of requiring students to hardcode them
  * in .data -- see docs/auto-grader-architecture.md Layer 1.
  *
- * @return 0 on success, or 1 if a label is unresolvable or a value is malformed.
+ * @return 0 on success, or 1 if a label is unresolvable or a value is
+ * malformed.
  */
 int CLIRunner::applyDataInit() {
   if (m_options.dataInit.isEmpty())
@@ -410,7 +413,8 @@ int CLIRunner::postRun() {
   if (m_options.jsonOutput) {
     // Telemetry output
     QJsonObject jsonOutput{{"status", ProcessorHandler::illegalInstruction()
-                                        ? "runtime_error" : "ok"}};
+                                          ? "runtime_error"
+                                          : "ok"}};
     for (auto &telemetry : m_options.telemetry)
       if (telemetry->isEnabled())
         // Keyed on key() rather than prettyKey(): this output is machine-
@@ -423,7 +427,8 @@ int CLIRunner::postRun() {
       jsonOutput.insert("instruction_requirement",
                         QJsonValue::fromVariant(instructionRequirement()));
     if (ProcessorHandler::illegalInstruction())
-      jsonOutput.insert("exit", QJsonValue::fromVariant(ExitTelemetry().report(true)));
+      jsonOutput.insert("exit",
+                        QJsonValue::fromVariant(ExitTelemetry().report(true)));
     *stream << QJsonDocument(jsonOutput).toJson(QJsonDocument::Indented);
   } else {
     if (const auto fault = ProcessorHandler::illegalInstruction()) {
