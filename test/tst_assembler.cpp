@@ -47,6 +47,7 @@ private slots:
   void tst_relativeLabels();
   void tst_parentheses();
   void tst_studentDiagnostics();
+  void tst_sourceDiagnostics();
 
 private:
   QString createProgram(int entries) {
@@ -109,7 +110,7 @@ struct RVTestTuple {
 void tst_Assembler::tst_studentDiagnostics() {
   auto isa = std::make_shared<ISAInfo<ISA::RV32I>>(QStringList());
   auto assembler = ISA_Assembler<ISA::RV32I>(isa);
-  for (const auto &operand : {"1;", "0xGG", "0b102", "missing_constant"}) {
+  for (const auto &operand : {"0xGG", "0b102", "missing_constant"}) {
     const auto res = assembler.assembleRaw("li a0," + QString(operand));
     QCOMPARE(res.errors.size(), size_t(1));
     QVERIFY(!res.errors.front().errorMessage().contains("use 'la'"));
@@ -134,6 +135,33 @@ void tst_Assembler::tst_studentDiagnostics() {
   const auto constant = assembler.assembleRaw(".equ value,7\nli a0,value\n");
   QVERIFY(constant.errors.empty());
   QVERIFY(assembler.m_symbolMap.abs.find("value")->first.is(Symbol::Constant));
+}
+
+void tst_Assembler::tst_sourceDiagnostics() {
+  auto isa = std::make_shared<ISAInfo<ISA::RV32I>>(QStringList());
+  auto assembler = ISA_Assembler<ISA::RV32I>(isa);
+  const std::vector<std::pair<QString, QString>> cases = {
+      {"bgt 0,t3,done\ndone: nop", "operand 1 of 'bgt'"},
+      {"ble t2,0,done\ndone: nop", "operand 2 of 'ble'"},
+      {"li to,0", "operand 1 of 'li'"},
+      {"sw a0,a0,1", "operand 3 of 'sw'"},
+      {"addi a0,1,0", "operand 2 of 'addi'"},
+      {"entry: lw a0,0(v)", "base register in operand 2 of 'lw'"},
+      {"lw a0,0 (v)", "base register in operand 2 of 'lw'"},
+      {"lw a0 0 invalid", "operand 3 of 'lw'"},
+      {"lw a0", "expected register, offset(base register)"},
+      {"lw a0,0(a1);", "Unexpected ';': this Ripes assembler"},
+      {"li a0,1;", "Unexpected ';': this Ripes assembler"}};
+  for (const auto &[source, expected] : cases) {
+    const auto result = assembler.assembleRaw(source);
+    QVERIFY2(!result.errors.empty(), qPrintable(source));
+    const auto message = result.errors.front().errorMessage();
+    QVERIFY2(message.contains(expected), qPrintable(message));
+    QVERIFY(!message.contains("Put the number"));
+    QVERIFY(!message.contains("immediate form"));
+  }
+  QVERIFY(assembler.assembleRaw(".data\ns: .string \"inside;literal\"\n").errors.empty());
+  QVERIFY(assembler.assembleRaw("lw a0,0 (sp)\n").errors.empty());
 }
 
 QByteArray toByteArray(int64_t v, size_t size) {

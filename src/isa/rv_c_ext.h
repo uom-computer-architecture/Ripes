@@ -676,6 +676,11 @@ struct CAddi4spn : public RVC_Instruction<CAddi4spn> {
   struct Fields : public FieldSet<RegRdPrime, Imm> {};
 
   constexpr static std::string_view NAME = "c.addi4spn";
+  CAddi4spn() {
+    // nzuimm must be nonzero. In particular, an all-zero word is illegal,
+    // not an ADDI of zero to sp. Keep this constraint in the ISA definition.
+    this->addExtraMatchCond([](Instr_T word) { return (word & 0x1fe0) != 0; });
+  }
 };
 
 } // namespace TypeCIW

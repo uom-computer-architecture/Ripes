@@ -60,7 +60,8 @@ With `--json`, `instruction_histogram` has these fields:
   exclude their own declared prologue lines without inspecting submitted source.
 - `unmapped`: counts for addresses without assembler source locations, such as
   an externally loaded binary. Raw encodings emitted in `.text` by directives
-  retain source locations. An undecodable retired word is counted as `unknown`.
+  retain source locations. CLI execution stops before an undecodable candidate
+  retires; that fault does not add a retired count.
 
 Counts are 64-bit unsigned values and may serialize as strings. The histogram
 describes the clocks completed in that run, including a run stopped at a cycle
@@ -100,5 +101,41 @@ top-level `status: input_error`, `kind: invalid_instruction_requirement`, and a
 `message`, with exit code 1. A `not_met` verdict leaves the simulation status and
 exit code successful: consumers decide how to use that observable. Existing
 assembly, syscall and termination errors retain their precedence.
+
+## Runtime instruction faults and source diagnostics
+
+CLI execution checks captured instructions with the selected ISA's matcher,
+including its enabled extensions, before retirement. Invalid candidates stop
+the run; valid raw `.word` instructions, unreachable data and flushed pipeline
+instructions remain permitted. The check uses the captured encoding, never a
+later memory read at its PC. Compressed decoding preserves unrecognised words
+so they cannot silently expand into valid operations.
+
+A fault returns exit code 1 and JSON `status: runtime_error`. It always includes
+`exit`, even when no optional telemetry was requested:
+
+```json
+{"status":"runtime_error","exit":{"reason":"illegal_instruction","cycles":0,
+ "instruction":{"pc":"0","encoding":"0","line":1,"source_lines":[1]}}}
+```
+
+`encoding` is the captured (normally expanded) word. `pc` and `encoding` may
+serialize as unsigned integer strings. Source lines are one-based; `line` is
+present only for an unambiguous mapping, and binary/dynamic code can lack source
+locations. Consumers should retain the PC and must not invent a source line.
+A processor without captured instruction observations returns
+`status: infrastructure_error`, `kind: runtime_observation_unsupported`.
+
+Assembler diagnostics preserve the original mnemonic and operand provenance
+through pseudo expansion and identify the base inside a memory operand, rather
+than exposing the encoder's field indices. Invalid register operands report
+the expected type and offending token, without proposing replacement code.
+Semicolon separators are unsupported by this Ripes assembler; that restriction
+does not describe every RISC-V assembler. Strings and character literals retain
+their semicolons.
+
+The existing wall-clock `status: timeout` reports `timeout_ms`. It establishes
+only that elapsed time expired, not an infinite loop or missing exit. It is
+distinct from `exit.reason: max_cycles`, the deterministic simulation bound.
 
 

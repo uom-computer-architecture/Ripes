@@ -116,7 +116,8 @@ AssemblerBase::splitSymbolsFromLine(const Location &location,
       splitTokens.push_back(token);
       continue;
     }
-    Token buffer;
+    Token buffer = token;
+    buffer.clear();
     for (const auto &ch : token) {
       buffer.append(ch);
       if (ch == ':') {
@@ -222,13 +223,13 @@ QString AssemblerBase::stripComment(const QString &line) const {
   return line;
 }
 
-Result<QStringList>
-AssemblerBase::splitCommentFromLine(const QStringList &stringTokens) const {
+Result<LineTokens>
+AssemblerBase::splitCommentFromLine(const LineTokens &stringTokens) const {
   if (stringTokens.size() == 0) {
     return {stringTokens};
   }
 
-  QStringList preCommentTokens;
+  LineTokens preCommentTokens;
   preCommentTokens.reserve(stringTokens.size());
   for (const auto &token : stringTokens) {
     if (token.startsWith(commentDelimiter())) {

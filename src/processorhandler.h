@@ -225,6 +225,14 @@ public:
   static void setMaxCycles(uint64_t cycles) { get()->m_maxCycles = cycles; }
   static bool maxCyclesExceeded() { return get()->m_maxCyclesExceeded; }
 
+  struct IllegalInstruction {
+    AInt pc;
+    VInt encoding;
+  };
+  static std::optional<IllegalInstruction> illegalInstruction() {
+    return get()->m_illegalInstruction;
+  }
+
   static std::optional<AInt> returnToZeroPc() {
     return get()->m_returnToZeroPc;
   }
@@ -399,6 +407,7 @@ private:
   uint64_t m_returnsToZero = 0;
   bool m_recordRetiredInstructions = false;
   bool m_instructionHistogramSupported = false;
+  std::optional<IllegalInstruction> m_illegalInstruction;
   std::map<std::pair<AInt, VInt>, uint64_t> m_instructionHistogram;
   QString m_stopReason;
   unsigned m_stopSyscall = 0;

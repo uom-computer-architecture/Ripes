@@ -21,14 +21,19 @@ bool matchedParens(std::vector<QChar> &parensStack, QChar end) {
 }
 
 Result<LineTokens> joinParentheses(const Location &loc,
-                                   const QStringList &tokens) {
+                                   const LineTokens &tokens) {
   LineTokens outtokens;
   std::vector<QChar> parensStack;
 
-  QString tokenBuffer;
+  Token tokenBuffer;
+  int nextGroup = 0;
+  int group = -1;
+  Token::Part part = Token::Part::Whole;
   auto commitBuffer = [&]() {
     if (!tokenBuffer.isEmpty()) {
-      outtokens << Token(tokenBuffer);
+      tokenBuffer.sourceGroup = group;
+      tokenBuffer.sourcePart = part;
+      outtokens << tokenBuffer;
       tokenBuffer.clear();
     }
   };
@@ -36,8 +41,14 @@ Result<LineTokens> joinParentheses(const Location &loc,
   for (const auto &token : tokens) {
     if (token.startsWith("\"") && token.endsWith("\"")) {
       // String literal; ignore parentheses inside
-      outtokens << Token(token);
+      Token quoted = token;
+      quoted.sourceGroup = nextGroup++;
+      outtokens << quoted;
       continue;
+    }
+    if (parensStack.empty()) {
+      group = nextGroup++;
+      part = Token::Part::Whole;
     }
     for (const auto &ch : token) {
       switch (ch.unicode()) {
@@ -46,7 +57,11 @@ Result<LineTokens> joinParentheses(const Location &loc,
         if (!parensStack.empty()) {
           tokenBuffer.append(ch);
         } else {
+          const bool address = !tokenBuffer.isEmpty();
+          if (address)
+            part = Token::Part::Offset;
           commitBuffer();
+          part = address ? Token::Part::Base : Token::Part::Parenthesized;
         }
         parensStack.push_back(ch);
         break;
@@ -80,17 +95,19 @@ Result<LineTokens> joinParentheses(const Location &loc,
   }
 }
 
-Result<QStringList> tokenizeQuotes(const Location &location,
+Result<LineTokens> tokenizeQuotes(const Location &location,
                                    const QString &line) {
-  QStringList tokens;
+  LineTokens tokens;
   bool inQuotes = false;
   bool escape = false;
   QString substr;
   auto pushSubstr = [&] {
-    tokens.push_back(substr);
+    Token token(substr);
+    tokens.push_back(token);
     substr.clear();
   };
-  for (auto &ch : line) {
+  for (qsizetype i = 0; i < line.size(); ++i) {
+    const auto ch = line[i];
     if (inQuotes) {
       if (!escape) {
         if (inQuotes && ch == '"') {
@@ -105,6 +122,21 @@ Result<QStringList> tokenizeQuotes(const Location &location,
         escape = false;
       substr.push_back(ch);
     } else {
+      // A semicolon inside a string or character literal is data. Everywhere
+      // else it is an unsupported separator in this assembler, not a new
+      // operand or an invalid register suffix.
+      if (ch == '\'') {
+        const auto length = line.mid(i + 1, 1) == "\\" ? 4 : 3;
+        if (line.mid(i + length - 1, 1) == "'") {
+          substr += line.mid(i, length);
+          i += length - 1;
+          continue;
+        }
+      }
+      if (ch == ';')
+        return Error(location, "Unexpected ';': this Ripes assembler does not "
+                               "support semicolon statement separators; "
+                               "use a new line between instructions");
       if (ch == ' ' || ch == ',' || ch == '\t') {
         if (!substr.isEmpty())
           pushSubstr();
@@ -118,8 +150,8 @@ Result<QStringList> tokenizeQuotes(const Location &location,
   if (inQuotes)
     return {Error(location, "Missing terminating '\"' character.")};
 
-  tokens.push_back(substr);
-  tokens.removeAll(QLatin1String(""));
+  if (!substr.isEmpty())
+    pushSubstr();
   return {tokens};
 }
 

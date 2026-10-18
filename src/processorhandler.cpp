@@ -208,6 +208,7 @@ void ProcessorHandler::_run() {
   m_returnToZeroPc.reset();
   m_returnsToZero = 0;
   m_instructionHistogram.clear();
+  m_illegalInstruction.reset();
   m_instructionHistogramSupported =
       m_recordRetiredInstructions &&
       m_currentProcessor->retiringInstructions().has_value();
@@ -223,6 +224,9 @@ void ProcessorHandler::_run() {
       vsrtl_proc->setEnableSignals(false);
     }
 
+    // Legality is defined by the selected ISA's existing matcher. Cache only
+    // by captured encoding, never by PC: instruction memory can change.
+    std::map<VInt, bool> legalEncodings;
     while (!(_checkBreakpoint() || m_currentProcessor->finished() ||
              m_stopRunningFlag)) {
       if (m_maxCycles != 0 &&
@@ -233,11 +237,25 @@ void ProcessorHandler::_run() {
       const auto returnPc = SystemIO::isCLIMode()
                                 ? m_currentProcessor->returnToZeroPc()
                                 : std::nullopt;
-      const auto retiring = m_recordRetiredInstructions
+      const auto retiring = (m_recordRetiredInstructions || SystemIO::isCLIMode())
                                 ? m_currentProcessor->retiringInstructions()
                                 : std::nullopt;
+      if (SystemIO::isCLIMode() && retiring) {
+        for (unsigned i = 0; i < retiring->count; ++i) {
+          const auto word = retiring->words[i];
+          auto [entry, inserted] = legalEncodings.try_emplace(word, false);
+          if (inserted)
+            entry->second = !_getAssembler()->instructionName(word).isEmpty();
+          if (!entry->second) {
+            m_illegalInstruction = IllegalInstruction{retiring->pcs[i], word};
+            break;
+          }
+        }
+        if (m_illegalInstruction)
+          break;
+      }
       m_currentProcessor->clock();
-      if (retiring)
+      if (m_recordRetiredInstructions && retiring)
         for (unsigned i = 0; i < retiring->count; ++i)
           ++m_instructionHistogram[{retiring->pcs[i], retiring->words[i]}];
       if (returnPc) {
