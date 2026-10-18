@@ -210,7 +210,7 @@ struct Instr : public RV_Instruction<InstrImpl> {
   struct Opcode
       : public OpcodeSet<OpPartOpcode<RVISA::OpcodeID::LOAD>,
                          OpPartFunct3<static_cast<unsigned>(funct3)>> {};
-  struct Fields : public FieldSet<RegRd, ImmCommon12, RegRs1> {};
+  struct Fields : public MemoryFieldSet<RegRd, ImmCommon12, RegRs1> {};
 };
 
 struct Lb : public Instr<Lb, Funct3::LB> {
@@ -360,7 +360,7 @@ struct Instr : public RV_Instruction<InstrImpl> {
   struct Opcode
       : public OpcodeSet<OpPartOpcode<RVISA::OpcodeID::STORE>,
                          OpPartFunct3<static_cast<unsigned>(funct3)>> {};
-  struct Fields : public FieldSet<RegRs2, ImmS, RegRs1> {};
+  struct Fields : public MemoryFieldSet<RegRs2, ImmS, RegRs1> {};
 };
 
 struct Sb : public Instr<Sb, Funct3::SB> {

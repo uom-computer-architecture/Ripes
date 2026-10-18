@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "VSRTL/core/vsrtl_component.h"
+#include "assembler/matcher.h"
 #include "riscv.h"
 
 namespace vsrtl {
@@ -13,6 +14,8 @@ public:
   void setISA(const std::shared_ptr<ISAInfoBase> &isa) {
     m_isa = isa;
     m_disabled = !m_isa->extensionEnabled("C");
+    m_matcher = std::make_unique<Assembler::Matcher>(m_isa->instructions());
+    m_validCompressed.clear();
   }
 
   Uncompress(std::string name, SimComponent *parent) : Component(name, parent) {
@@ -32,6 +35,16 @@ public:
       if ((quadrant == 0b11) || (m_disabled)) { // Not a compressed instruction
         return instrValue;
       }
+
+      // Preserve an unrecognised compressed word instead of expanding it into
+      // a valid operation (notably an all-zero C.ADDI4SPN). This captured value
+      // follows the normal valid/flush pipeline and faults only at retirement.
+      const auto compressed = instrValue & 0xffff;
+      auto [entry, inserted] = m_validCompressed.try_emplace(compressed, false);
+      if (inserted)
+        entry->second = !m_matcher->matchInstruction(compressed).isError();
+      if (!entry->second)
+        return compressed;
 
       VInt new_instr = instrValue;
       long imm;
@@ -420,6 +433,8 @@ public:
 
 private:
   std::shared_ptr<ISAInfoBase> m_isa;
+  std::unique_ptr<Assembler::Matcher> m_matcher;
+  std::map<VInt, bool> m_validCompressed;
   bool m_disabled = true;
 };
 

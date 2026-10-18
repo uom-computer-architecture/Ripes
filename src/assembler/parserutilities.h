@@ -16,14 +16,14 @@ namespace Assembler {
  * (3*2))(x10)] => [lw, x10, B + 3*2), x10]
  */
 Result<LineTokens> joinParentheses(const Location &location,
-                                   const QStringList &tokens);
+                                   const LineTokens &tokens);
 
 /**
  * @brief Quote-aware string tokenization.
  * separates tokens by either ' ', ',' or '\t' characters
  * and returns a list of those separated strings
  */
-Result<QStringList> tokenizeQuotes(const Location &location,
-                                   const QString &line);
+Result<LineTokens> tokenizeQuotes(const Location &location,
+                                  const QString &line);
 } // namespace Assembler
 } // namespace Ripes

@@ -290,6 +290,17 @@ protected:
                    directiveAndRest.second);
 
       tsl.tokens = finalTokens;
+      if (tsl.directive.isEmpty() && !tsl.tokens.empty()) {
+        tsl.sourceOpcode = tsl.tokens.front();
+        int previousGroup = -1;
+        for (qsizetype i = 1; i < tsl.tokens.size(); ++i) {
+          auto &token = tsl.tokens[i];
+          if (token.sourceGroup != previousGroup)
+            ++tsl.sourceOperandCount;
+          token.sourceOperand = tsl.sourceOperandCount;
+          previousGroup = token.sourceGroup;
+        }
+      }
       if (tsl.tokens.empty() && tsl.directive.isEmpty()) {
         if (!tsl.symbols.empty()) {
           carry.insert(tsl.symbols.begin(), tsl.symbols.end());
@@ -337,8 +348,10 @@ protected:
          */
         const auto &eops = expandedOps.value();
         for (auto eop : llvm::enumerate(eops)) {
-          TokenizedSrcLine tsl(tokenizedLine.value().sourceLine());
+          TokenizedSrcLine tsl = tokenizedLine.value();
           tsl.tokens = eop.value();
+          tsl.symbols.clear();
+          tsl.directive.clear();
           if (eop.index() == 0) {
             tsl.directive = tokenizedLine.value().directive;
             tsl.symbols = tokenizedLine.value().symbols;
@@ -499,15 +512,15 @@ protected:
         // A register where a number or label belongs ("lw t2, a0(t1)")
         // reaches here as an unknown symbol; name what it actually is.
         if (isRegisterName(symbol))
-          errors.push_back(Error(linkRequest,
-                                 "'" + symbol +
+          errors.push_back(
+              Error(linkRequest, "'" + symbol +
                                      "' is a register, but this operand must "
                                      "be a number or a label"));
         else if (symbol.contains(';'))
-          errors.push_back(Error(linkRequest,
-                                 "Unknown symbol '" + symbol +
+          errors.push_back(
+              Error(linkRequest, "Unknown symbol '" + symbol +
                                      "': ';' does not end a line or start a "
-                                     "comment in RISC-V assembly; use '#' "
+                                     "comment in this Ripes assembler; use '#' "
                                      "for comments"));
         else
           errors.push_back(*err);

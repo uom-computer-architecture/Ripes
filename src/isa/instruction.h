@@ -225,8 +225,10 @@ using ResolveSymbolFunc =
 /// "'add' needs a register as operand 3, but the line has only 2 operands".
 /// Operands are counted from 1, as a student reads the line; the encoder's
 /// field names and 0-based indices mean nothing to them.
-inline QString missingOperand(const TokenizedSrcLine &line,
-                              unsigned tokenIndex, const QString &kind) {
+inline QString missingOperand(const TokenizedSrcLine &line, unsigned tokenIndex,
+                              const QString &kind) {
+  if (!line.sourceOpcode.isEmpty() && line.sourceOpcode != line.tokens.front())
+    return "'" + line.sourceOpcode + "' is missing " + kind;
   const auto given = line.tokens.size() - 1;
   return "'" + line.tokens.at(0) + "' needs " + kind + " as operand " +
          QString::number(tokenIndex + 1) + ", but the line has " +
@@ -412,9 +414,21 @@ public:
     return kinds;
   }
 
+  static constexpr bool memoryOperand = false;
+  static QString sourceSyntax() { return describe().join(", "); }
+
 private:
   /// This calls all BitRanges' static assertions
   constexpr static BitRanges ranges{};
+};
+
+// Operand grouping belongs to the ISA definition, not to an opcode list in
+// either the parser or grader. The encoding has three fields; assembly has a
+// register and an offset(base-register) operand.
+template <template <unsigned> typename... Fields>
+struct MemoryFieldSet : public FieldSet<Fields...> {
+  static constexpr bool memoryOperand = true;
+  static QString sourceSyntax() { return "register, offset(base register)"; }
 };
 
 /**
@@ -445,20 +459,8 @@ struct Reg : public Field<tokenIndex, BitRangeSet<BitRange>> {
     bool success = false;
     unsigned regIndex = RegInfo().regNumber(regToken, success);
     if (!success) {
-      QString msg = "operand " + QString::number(tokenIndex + 1) + " of '" +
-                    line.tokens.at(0) + "' must be a register, but '" +
-                    regToken + "' is not one";
-      // A number where a register belongs: comparing with 0 ("bge t0, 0, l"),
-      // or the register form of an instruction used with a constant ("sll
-      // a4, a1, 2"). This field cannot tell which, so offer both remedies.
-      bool isNumber = false;
-      const auto number = regToken.toLongLong(&isNumber, 0);
-      if (isNumber && number == 0)
-        msg += ". For the value 0, use the register 'zero'";
-      else if (isNumber)
-        msg += ". Put the number in a register first (e.g. 'li t0, " +
-               regToken + "'), or use the instruction's immediate form if it "
-               "has one (e.g. 'addi', 'slli')";
+      QString msg = line.operandLocation(tokenIndex + 1) +
+                    " must be a register, but '" + regToken + "' is not one";
       return Error(line, msg);
     }
 
@@ -839,8 +841,15 @@ struct Instruction : public InstructionBase {
 
   AssembleRes assemble(const TokenizedSrcLine &tokens) override {
     const auto expected = InstrImpl::Fields::numFields();
+    if constexpr (InstrImpl::Fields::memoryOperand) {
+      if (tokens.tokens.size() != expected + 1)
+        return Error(tokens, "Invalid operands for '" +
+                                 tokens.diagnosticOpcode() + "': expected " +
+                                 InstrImpl::Fields::sourceSyntax());
+    }
     if (tokens.tokens.size() > expected + 1) {
-      QString msg = "'" + name() + "' takes " + QString::number(expected) +
+      QString msg = "'" + tokens.diagnosticOpcode() + "' takes " +
+                    QString::number(expected) +
                     (expected == 1 ? " operand" : " operands");
       if (expected > 0)
         msg += " (" + InstrImpl::Fields::describe().join(", ") + ")";
@@ -850,9 +859,22 @@ struct Instruction : public InstructionBase {
     Instr_T instruction = 0;
     FieldLinkRequest linksWithSymbol;
 
+    auto sourceTokens = tokens;
+    if constexpr (InstrImpl::Fields::memoryOperand) {
+      // Preserve explicit parentheses even when whitespace separated the
+      // offset from the base. Flat field syntax retains its own positions.
+      if (sourceTokens.tokens[3].sourcePart == Token::Part::Base ||
+          sourceTokens.tokens[3].sourcePart == Token::Part::Parenthesized) {
+        sourceTokens.tokens[2].sourceOperand = 2;
+        sourceTokens.tokens[2].sourcePart = Token::Part::Offset;
+        sourceTokens.tokens[3].sourceOperand = 2;
+        sourceTokens.tokens[3].sourcePart = Token::Part::Base;
+      }
+    }
+
     InstrImpl::Opcode::apply(instruction, linksWithSymbol);
-    if (auto fieldRes =
-            InstrImpl::Fields::apply(tokens, instruction, linksWithSymbol);
+    if (auto fieldRes = InstrImpl::Fields::apply(sourceTokens, instruction,
+                                                 linksWithSymbol);
         fieldRes.isError()) {
       return std::get<Error>(fieldRes);
     }

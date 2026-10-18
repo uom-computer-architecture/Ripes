@@ -248,11 +248,28 @@ public:
   QString key() const override { return "exit"; }
   QString description() const override {
     return "exit reason (normal, max_cycles, unsupported_syscall, "
-           "input_requested)";
+           "input_requested, illegal_instruction)";
   }
   QVariant report(bool /*json*/) override {
     QVariantMap m;
-    if (!ProcessorHandler::stopReason().isEmpty()) {
+    if (const auto fault = ProcessorHandler::illegalInstruction()) {
+      m["reason"] = "illegal_instruction";
+      QVariantMap observation{
+          {"pc", QVariant::fromValue(fault->pc)},
+          {"encoding", QVariant::fromValue(fault->encoding)}};
+      if (const auto program = ProcessorHandler::getProgram()) {
+        const auto source = program->sourceMapping.find(fault->pc);
+        if (source != program->sourceMapping.end()) {
+          QVariantList lines;
+          for (const auto line : source->second)
+            lines << static_cast<qint64>(line + 1);
+          observation["source_lines"] = lines;
+          if (lines.size() == 1)
+            observation["line"] = lines.front();
+        }
+      }
+      m["instruction"] = observation;
+    } else if (!ProcessorHandler::stopReason().isEmpty()) {
       m["reason"] = ProcessorHandler::stopReason();
       m["syscall"] = ProcessorHandler::stopSyscall();
     } else {

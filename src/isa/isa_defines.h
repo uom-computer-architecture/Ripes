@@ -93,10 +93,20 @@ public:
   Token(const QString &t) : QString(t) {}
   Token(const QString &t, const QString &relocation)
       : QString(t), m_relocation(relocation) {}
+  Token(const Token &t, const QString &relocation) : Token(t) {
+    m_relocation = relocation;
+  }
   Token() : QString() {}
   void setRelocation(const QString &relocation) { m_relocation = relocation; }
   bool hasRelocation() const { return !m_relocation.isEmpty(); }
   const QString &relocation() const { return m_relocation; }
+
+  // Source provenance survives token copies and operand reordering during
+  // pseudo expansion. Generated tokens deliberately have no source operand.
+  enum class Part { Whole, Offset, Base, Parenthesized };
+  int sourceGroup = -1;
+  unsigned sourceOperand = 0;
+  Part sourcePart = Part::Whole;
 
 private:
   QString m_relocation;
@@ -177,6 +187,28 @@ struct TokenizedSrcLine : public Location {
   LineTokens tokens;
   QString directive;
   AInt programAddress = -1;
+  QString sourceOpcode;
+  unsigned sourceOperandCount = 0;
+
+  QString diagnosticOpcode() const {
+    return sourceOpcode.isEmpty() ? QString(tokens.front()) : sourceOpcode;
+  }
+  QString operandLocation(unsigned tokenIndex) const {
+    if (tokenIndex < static_cast<unsigned>(tokens.size()) &&
+        tokens[tokenIndex].sourceOperand) {
+      const auto &token = tokens[tokenIndex];
+      const QString part =
+          token.sourcePart == Token::Part::Base     ? "base register in "
+          : token.sourcePart == Token::Part::Offset ? "offset in "
+                                                    : "";
+      return part + "operand " + QString::number(token.sourceOperand) +
+             " of '" + diagnosticOpcode() + "'";
+    }
+    if (!sourceOpcode.isEmpty() && sourceOpcode != tokens.front())
+      return "an operand of '" + sourceOpcode + "'";
+    return "operand " + QString::number(tokenIndex) + " of '" +
+           diagnosticOpcode() + "'";
+  }
 };
 
 /// An error is defined as a reference to a source line index + an error string
